@@ -120,6 +120,14 @@
         
         .citation-box { background: #f8fafc; border-left: 4px solid #4f46e5; padding: 15px; margin-top: 20px; font-size: 0.85rem; color: #334155; }
         .visual-diagram { background: #e0e7ff; padding: 15px; border-radius: 6px; margin: 15px 0; font-family: monospace; font-size: 0.85rem; text-align: center; border: 1px dashed #818cf8; }
+        .modal-content h4 { color: #1e293b; font-size: 1rem; margin-top: 22px; margin-bottom: 8px; border-left: 3px solid #4f46e5; padding-left: 10px; }
+        .math-block { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin: 12px 0; font-size: 0.85rem; }
+        .math-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed #e2e8f0; }
+        .math-row:last-child { border-bottom: none; }
+        .math-row.math-total { font-weight: 700; color: #0f172a; border-top: 2px solid #cbd5e1; border-bottom: none; padding-top: 6px; margin-top: 2px; }
+        .math-label { color: #475569; }
+        .math-val { font-family: ui-monospace, Menlo, Consolas, monospace; color: #0f172a; }
+        .formula-block { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px; padding: 12px 14px; margin: 14px 0; text-align: center; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.95rem; color: #78350f; }
 
         /* Settings pill in the header */
         .settings-pill { cursor: pointer; transition: background 0.15s; }
@@ -238,7 +246,7 @@
             </div>
 
             <h4>The 87% Rule (The Mosaic Effect)</h4>
-            <p>You might think thousands of people share your ZIP code and birthday. Mathematically, they do not. Privacy scientists proved that the combination of just three demographic traits acts as a unique fingerprint for the vast majority of the population.</p>
+            <p>You might think thousands of people share your ZIP code and birthday. Mathematically, they do not. Latanya Sweeney showed that the combination of just three demographic traits acts as a unique fingerprint for the vast majority of the US population.</p>
 
             <div class="citation-box">
                 <strong>Academic Citation:</strong><br>
@@ -247,6 +255,68 @@
                 <strong>Sources:</strong><br>
                 &bull; <a href="https://kilthub.cmu.edu/articles/journal_contribution/Simple_Demographics_Often_Identify_People_Uniquely/6625769?file=12123218" target="_blank" rel="noopener noreferrer">CMU KiltHub (official archive)</a><br>
                 &bull; <a href="https://dataprivacylab.org/projects/identifiability/paper1.pdf" target="_blank" rel="noopener noreferrer">Data Privacy Lab (PDF)</a>
+            </div>
+
+            <h4>The Math Behind It: k-Anonymity and Entropy</h4>
+            <p>Privacy scientists formalized the intuition behind the 87% rule with a property called <strong>k-anonymity</strong>: a dataset is <em>k-anonymous</em> if every combination of quasi-identifiers appears for at least <em>k</em> different people. If a combination is unique (k = 1), a single person can be singled out. If it is shared by a thousand people (k = 1,000), the dataset hides them in a crowd.</p>
+
+            <p>Information theory gives us a way to estimate when that crowd shrinks to nothing. Each quasi-identifier carries some number of <strong>bits of entropy</strong> — roughly, how many distinct values it can take in a population:</p>
+
+            <div class="math-block">
+                <div class="math-row"><span class="math-label">5-digit ZIP code</span><span class="math-val">~17 bits</span></div>
+                <div class="math-row"><span class="math-label">Full date of birth</span><span class="math-val">~15 bits</span></div>
+                <div class="math-row"><span class="math-label">Gender (binary)</span><span class="math-val">~1 bit</span></div>
+                <div class="math-row math-total"><span class="math-label">Total</span><span class="math-val">~33 bits</span></div>
+            </div>
+
+            <p>A population of 248 million people only needs about <strong>log₂(248,000,000) &#8776; 27.9 bits</strong> of entropy to single everyone out. With 33 bits available from ZIP + DOB + gender, there is a ~5-bit surplus — which is why Sweeney was able to uniquely identify 87% of the country from those three fields alone.</p>
+
+            <p>Generalizing: for <em>N</em> people, a <em>k</em>-anonymity target <em>k</em>, and quasi-identifiers averaging <em>b</em> bits each, the minimum number of fields that likely breaks anonymity is:</p>
+
+            <div class="formula-block">
+                Q<sub>threshold</sub> = &lfloor;log&#8322;(N / k) / b&rfloor; + 1
+            </div>
+
+            <p>This is the same formula the classifier uses to compute the Mosaic Effect threshold from your dataset size and privacy target. Open the Settings modal to see it applied to your own data.</p>
+
+            <h4>A Second Example: The Netflix Prize (2008)</h4>
+            <p>In 2006 Netflix released an "anonymized" training set of 100 million movie ratings from 480,000 subscribers as part of a $1M machine-learning contest. They replaced customer names with random IDs and argued the data was safe.</p>
+
+            <p>Two researchers at the University of Texas, Arvind Narayanan and Vitaly Shmatikov, proved it was not. Using a handful of movie ratings and review dates they gathered from <strong>public IMDb profiles</strong>, they were able to re-identify Netflix subscribers — and reveal what the dataset said about their full viewing history, including politically and sexually sensitive films.</p>
+
+            <div class="visual-diagram">
+                <strong>Anonymous Netflix Record</strong><br>
+                [user_id: 87234] rated <em>Lost in Translation</em> (4/5), <em>Eternal Sunshine</em> (5/5), <em>Brokeback Mountain</em> (4/5) around Oct 2005<br><br>
+                ➕ (cross-referenced with)<br><br>
+                <strong>Public IMDb Profile</strong><br>
+                [Name: Jane R.] reviewed <em>Lost in Translation</em>, <em>Eternal Sunshine</em>, <em>Brokeback Mountain</em> Oct 2005<br><br>
+                🟰 (equals)<br><br>
+                <strong style="color: #dc2626;">Jane R.'s full Netflix rental and rating history is exposed</strong>
+            </div>
+
+            <p>Their key result: knowing just <strong>8 obscure ratings</strong> (or 2 ratings with approximate dates) was enough to uniquely identify 99% of records in the Netflix set. The same technique — linking "anonymous" high-dimensional behaviour to a sparse side dataset — is exactly what a bank faces when releasing transaction data: a handful of merchant names and dates is effectively a fingerprint.</p>
+
+            <div class="citation-box">
+                <strong>Academic Citation:</strong><br>
+                <em>"We prove that an adversary who knows only a little bit about an individual subscriber can easily identify this subscriber's record in the dataset. Using the Internet Movie Database as the source of background knowledge, we successfully identified the Netflix records of known users, uncovering their apparent political preferences and other potentially sensitive information."</em><br><br>
+                — Narayanan, A. &amp; Shmatikov, V. (2008). Robust De-anonymization of Large Sparse Datasets. <em>IEEE Symposium on Security and Privacy</em>.<br><br>
+                <strong>Source:</strong> <a href="https://www.cs.utexas.edu/~shmat/shmat_oak08netflix.pdf" target="_blank" rel="noopener noreferrer">UT Austin (PDF)</a>
+            </div>
+
+            <h4>A Third Example: Unique in the Crowd (2013)</h4>
+            <p>Yves-Alexandre de Montjoye and colleagues at MIT analysed 15 months of mobile phone records for 1.5 million people. Each record was a pair (cell tower, hour). Their finding:</p>
+
+            <div class="formula-block">
+                Just <strong>4 spatiotemporal points</strong> are enough to <strong>uniquely identify 95%</strong> of individuals.
+            </div>
+
+            <p>A single home cell at night, a work cell on Monday morning, and two random hourly pings are an effective fingerprint for almost everyone. Coarsening the data (hour &rarr; day, cell &rarr; district) only slowly reduces uniqueness. Mobile metadata is closer to an identifier than most people imagine.</p>
+
+            <div class="citation-box">
+                <strong>Academic Citation:</strong><br>
+                <em>"In a dataset where the location of an individual is specified hourly, and with a spatial resolution equal to that given by the carrier's antennas, four spatio-temporal points are enough to uniquely identify 95% of the individuals."</em><br><br>
+                — de Montjoye, Y.-A., Hidalgo, C. A., Verleysen, M., &amp; Blondel, V. D. (2013). Unique in the Crowd: The privacy bounds of human mobility. <em>Scientific Reports</em>, 3, 1376.<br><br>
+                <strong>Source:</strong> <a href="https://www.nature.com/articles/srep01376" target="_blank" rel="noopener noreferrer">Nature Scientific Reports</a>
             </div>
         </div>
     </div>
