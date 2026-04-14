@@ -258,8 +258,13 @@
         { id: "cif", name: "customer_information_file", tier: 1, isSPI: false, category: "System & Internal", regs: ["Pseudonymized PI"], harm: "Tracking", aliases: ["cif", "cif_number", "customer_id", "cust_id", "internal_customer_id"], remediation: "Master customer key. Limit to need-to-know systems." },
 
         // ---------- Personal Details ----------
+        { id: "title", name: "title_salutation", tier: 3, isSPI: false, category: "Personal Details", regs: ["Generalized"], harm: "None", aliases: ["title", "salutation", "honorific", "mr_mrs_ms"] },
         { id: "first_name", name: "first_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification", aliases: ["fname", "firstname", "given_name"] },
+        { id: "middle_name", name: "middle_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification", aliases: ["mname", "middlename", "middle_initial"] },
         { id: "last_name", name: "last_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification", aliases: ["lname", "lastname", "surname", "family_name"] },
+        { id: "name_suffix", name: "name_suffix", tier: 3, isSPI: false, category: "Personal Details", regs: ["Generalized"], harm: "None", aliases: ["suffix", "name_suffix", "jr_sr_iii"] },
+        { id: "preferred_name", name: "preferred_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification", aliases: ["nickname", "preferred", "alias_name"] },
+        { id: "phone_alt", name: "alternate_phone", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Re-Contact", aliases: ["mobile_alt", "secondary_phone", "work_phone", "home_phone"] },
         { id: "maiden_name", name: "mothers_maiden_name", tier: 1, isSPI: true, category: "Personal Details", regs: ["KBA Secret"], harm: "Auth Bypass", aliases: ["maiden_name", "mothers_maiden", "birth_surname"], remediation: "Commonly used as KBA secret. Treat as a credential, never as plain metadata." },
         { id: "email", name: "email_address", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Phishing", aliases: ["email", "mail", "e_mail"] },
         { id: "phone", name: "phone_number", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Smishing", aliases: ["phone", "mobile", "tel", "telephone", "msisdn"] },
@@ -284,6 +289,17 @@
         { id: "crypto_wallet", name: "crypto_wallet_address", tier: 1, isSPI: true, category: "Financial", regs: ["Pseudonymized PI"], harm: "Chain Analysis Re-ID", aliases: ["wallet", "wallet_address", "btc_address", "eth_address"], remediation: "Wallets are pseudonymous, not anonymous. Apply the same controls as account numbers." },
         { id: "swift", name: "swift_bic_code", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Routing Disclosure", aliases: ["swift", "bic", "swift_code"] },
         { id: "routing", name: "routing_number", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Routing Disclosure", aliases: ["aba", "routing", "sort_code", "routing_no"] },
+        { id: "branch_code", name: "branch_code", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Geographic Linkage", aliases: ["branch", "branch_id", "branch_no", "home_branch"] },
+        { id: "account_open_date", name: "account_open_date", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Tenure Linkage", aliases: ["open_date", "onboarding_date", "account_creation_date"] },
+        { id: "account_type", name: "account_type", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Profiling", aliases: ["product_type", "acct_type", "checking_savings"] },
+        { id: "product_holdings", name: "product_holdings", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Profiling", aliases: ["products", "held_products", "product_set"] },
+        { id: "balance_band", name: "account_balance_band", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Wealth Profiling", aliases: ["balance_tier", "balance_range", "balance_bucket"], remediation: "Bucketed balances are still quasi-identifying when joined with city or branch." },
+        { id: "txn_amount", name: "transaction_amount", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Behavioral Profiling", aliases: ["amount", "txn_amt", "value", "debit_amount", "credit_amount"] },
+        { id: "txn_currency", name: "transaction_currency", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Profiling", aliases: ["currency", "ccy", "iso_currency"] },
+        { id: "txn_country", name: "transaction_country", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Cross-Border Profiling", aliases: ["txn_country", "merchant_country", "pos_country"] },
+        { id: "merchant_mcc", name: "merchant_name_mcc", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Behavioral Profiling", aliases: ["merchant", "merchant_name", "mcc", "merchant_category_code"] },
+        { id: "txn_timestamp", name: "transaction_timestamp", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Pattern Analysis", aliases: ["txn_time", "txn_date", "trade_date", "post_date"] },
+        { id: "channel", name: "channel_used", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Profiling", aliases: ["channel", "origination_channel", "acquisition_channel", "atm_web_branch"] },
         // ---------- Financial - Card (PCI-DSS) ----------
         { id: "credit_card", name: "credit_card_number", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS"], harm: "Card Fraud", aliases: ["cc", "card_number", "pan", "credit_card", "ccn"], remediation: "Tokenize or hash if full PAN is not required (PCI-DSS Req. 3.4)." },
         { id: "card_cvv", name: "card_cvv_cvc", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SAD"], harm: "Card Fraud", aliases: ["cvv", "cvc", "cvv2", "csc"], remediation: "Sensitive Authentication Data. MUST NOT be stored after authorization (PCI-DSS Req. 3.3.1)." },
@@ -307,10 +323,24 @@
         { id: "source_of_funds", name: "source_of_funds_wealth", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Profiling", aliases: ["sof", "sow", "source_of_wealth"] },
         { id: "ubo", name: "ultimate_beneficial_owner", tier: 1, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Identification", aliases: ["ubo", "beneficial_owner"] },
 
+        // ---------- Customer Profile (KYC quasi-identifiers) ----------
+        { id: "occupation", name: "occupation", tier: 2, isSPI: false, category: "Customer Profile", regs: ["Quasi"], harm: "Profiling", aliases: ["occupation", "job", "profession"] },
+        { id: "job_title", name: "job_title", tier: 2, isSPI: false, category: "Customer Profile", regs: ["Quasi"], harm: "Profiling", aliases: ["title_role", "position", "role"] },
+        { id: "employer", name: "employer_name", tier: 2, isSPI: false, category: "Customer Profile", regs: ["Quasi"], harm: "Workplace Linkage", aliases: ["employer", "company_name", "workplace"] },
+        { id: "industry", name: "industry_sector", tier: 2, isSPI: false, category: "Customer Profile", regs: ["Quasi"], harm: "Profiling", aliases: ["industry", "sector", "naics", "sic_code"] },
+        { id: "income_band", name: "income_band", tier: 2, isSPI: false, category: "Customer Profile", regs: ["Quasi"], harm: "Wealth Profiling", aliases: ["income_bracket", "income_tier", "income_range"], remediation: "Coarser than annual_income but still combinable with branch and ZIP." },
+        { id: "customer_segment", name: "customer_segment", tier: 2, isSPI: false, category: "Customer Profile", regs: ["Quasi"], harm: "Profiling", aliases: ["segment", "tier", "hnw_flag", "wealth_tier"] },
+        { id: "customer_tenure", name: "customer_tenure_years", tier: 2, isSPI: false, category: "Customer Profile", regs: ["Quasi"], harm: "Tenure Linkage", aliases: ["tenure", "years_as_customer", "relationship_length"] },
+        { id: "residency_status", name: "residency_status", tier: 2, isSPI: false, category: "Customer Profile", regs: ["Quasi"], harm: "Profiling", aliases: ["resident", "non_resident", "tax_residency_status"] },
+        { id: "preferred_channel", name: "preferred_channel", tier: 2, isSPI: false, category: "Customer Profile", regs: ["Quasi"], harm: "Profiling", aliases: ["channel_preference", "communication_preference"] },
+
         // ---------- Location ----------
         { id: "address", name: "street_address", tier: 1, isSPI: false, category: "Location", regs: ["Direct ID"], harm: "Stalking", aliases: ["address", "street", "address_line_1"], remediation: "Truncate to ZIP or City to anonymize." },
         { id: "gps", name: "precise_geolocation", tier: 1, isSPI: true, category: "Location", regs: ["SPI / CCPA"], harm: "Physical Tracking", aliases: ["gps", "lat_long", "latitude", "longitude", "coordinates"], remediation: "Downgrade coordinates to generic region bounds." },
         { id: "zip_code", name: "zip_code_5", tier: 2, isSPI: false, category: "Location", regs: ["Quasi"], harm: "Targeting", aliases: ["zip", "zipcode", "zip_code", "postal_code", "postcode"] },
+        { id: "city", name: "city", tier: 2, isSPI: false, category: "Location", regs: ["Quasi"], harm: "Targeting", aliases: ["city", "town", "locality"] },
+        { id: "ip_geo", name: "ip_geolocation_city", tier: 2, isSPI: false, category: "Location", regs: ["Quasi"], harm: "Tracking", aliases: ["geo_city", "geo_region", "ip_city"] },
+        { id: "timezone", name: "timezone", tier: 2, isSPI: false, category: "Location", regs: ["Quasi"], harm: "Browser Fingerprinting", aliases: ["tz", "tz_offset", "iana_timezone"] },
         { id: "state", name: "state_province", tier: 3, isSPI: false, category: "Location", regs: ["Generalized"], harm: "None", aliases: ["state", "province", "region"] },
         { id: "country", name: "country_of_residence", tier: 3, isSPI: false, category: "Location", regs: ["Generalized"], harm: "None", aliases: ["country", "country_code", "iso_country"] },
 
@@ -324,6 +354,11 @@
         { id: "sexual_orientation", name: "sexual_orientation", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["lgbtq_status", "sex_life"] },
         { id: "trade_union", name: "trade_union_membership", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["union_membership"] },
         { id: "nationality", name: "nationality_citizenship", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Profiling", aliases: ["citizenship", "country_of_citizenship"] },
+        { id: "place_of_birth", name: "place_of_birth", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Auth Bypass", aliases: ["pob", "birthplace", "birth_city"] },
+        { id: "marital_status", name: "marital_status", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Profiling", aliases: ["marital", "civil_status", "relationship_status"] },
+        { id: "dependents", name: "number_of_dependents", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Household Profiling", aliases: ["dependents", "num_children", "household_size"] },
+        { id: "education", name: "education_level", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Profiling", aliases: ["education", "highest_degree"] },
+        { id: "language", name: "preferred_language", tier: 3, isSPI: false, category: "Demographics", regs: ["Generalized"], harm: "None", aliases: ["language", "locale", "preferred_lang"] },
 
         // ---------- Health & Biometric (HIPAA, BIPA, GDPR Art. 9) ----------
         { id: "mrn", name: "medical_record_no", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["HIPAA"], harm: "Medical ID Theft", aliases: ["mrn", "medical_record_number", "patient_id"] },
@@ -355,6 +390,12 @@
         // ---------- Digital & Security ----------
         { id: "ip_address", name: "ip_address", tier: 1, isSPI: false, category: "Digital & Security", regs: ["Direct ID"], harm: "Cyber Profiling", aliases: ["ip", "ipaddress", "remote_addr"] },
         { id: "device_id", name: "device_fingerprint", tier: 1, isSPI: false, category: "Digital & Security", regs: ["Direct ID"], harm: "Tracking", aliases: ["device_id", "fingerprint", "device_hash"] },
+        { id: "user_agent", name: "user_agent_string", tier: 2, isSPI: false, category: "Digital & Security", regs: ["Quasi"], harm: "Browser Fingerprinting", aliases: ["ua", "useragent", "browser_string"] },
+        { id: "device_os", name: "device_os_version", tier: 2, isSPI: false, category: "Digital & Security", regs: ["Quasi"], harm: "Fingerprinting", aliases: ["os", "operating_system", "os_version", "device_model"] },
+        { id: "screen_res", name: "screen_resolution", tier: 2, isSPI: false, category: "Digital & Security", regs: ["Quasi"], harm: "Browser Fingerprinting", aliases: ["screen", "resolution", "viewport"] },
+        { id: "clickstream", name: "clickstream_events", tier: 2, isSPI: false, category: "Digital & Security", regs: ["Quasi"], harm: "Behavioral Profiling", aliases: ["pageviews", "click_history", "navigation_events"] },
+        { id: "login_history", name: "login_timestamps", tier: 2, isSPI: false, category: "Digital & Security", regs: ["Quasi"], harm: "Pattern Analysis", aliases: ["login_history", "auth_log", "login_times"] },
+        { id: "email_domain", name: "email_domain", tier: 2, isSPI: false, category: "Digital & Security", regs: ["Quasi"], harm: "Workplace Linkage", aliases: ["mail_domain", "email_suffix"], remediation: "Corporate domains often re-identify employer; treat as employer linkage." },
 
         // ---------- Special Categories ----------
         { id: "minor", name: "minor_under_13_flag", tier: 2, isSPI: true, category: "Special Categories", regs: ["COPPA / GDPR-K"], harm: "Child Protection", aliases: ["age_under_13", "minor_flag", "child"], remediation: "Children's data requires verifiable parental consent. Avoid collection where possible." },
