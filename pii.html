@@ -201,46 +201,82 @@
     </div>
 
 <script>
-    // --- 0. Jurisdiction Rules ---
-    // Each jurisdiction adjusts the classification logic. mosaicAdjust shifts
-    // the quasi-identifier threshold; spiAlwaysRestricted forces PI when any
-    // sensitive item is present; healthSafeHarbor=true means any health item
-    // is treated as restricted on its own.
+    // --- 0. Sensitivity Tag Vocabulary ---
+    // Each inventory item can declare an explicit `sensitivityTags: [...]`
+    // array drawn from this vocabulary. Each jurisdiction declares which
+    // tags are treated as "Restricted" via its own `triggerTags` list.
+    // Items without explicit tags fall back to the "legacy_spi" tag when
+    // their old `isSPI: true` flag is set, so behavior is preserved for
+    // any item that has not yet been re-tagged.
+    const TAG_LABELS = {
+        gdpr_art9:        "GDPR Art. 9 special category",
+        gdpr_art10:       "GDPR Art. 10 criminal data",
+        ccpa_spi:         "CCPA/CPRA Sensitive PI",
+        pipeda:           "PIPEDA sensitive (OPC 4.3.6)",
+        pipeda_sin:       "PIPEDA SIN (special protection)",
+        hipaa_phi:        "HIPAA Protected Health Info",
+        pci_sad:          "PCI-DSS Sensitive Auth Data",
+        pci_chd:          "PCI-DSS Cardholder Data",
+        glba_npi:         "GLBA Nonpublic Personal Info",
+        fcra:             "FCRA-protected",
+        bsa_confidential: "BSA / SAR confidential",
+        ofac:             "OFAC sanctions result",
+        bipa:             "Illinois BIPA biometric",
+        coppa_gdprk:      "COPPA / GDPR-K children",
+        credential:       "Authentication credential",
+        legacy_spi:       "Legacy sensitive (un-tagged)"
+    };
+
+    // Resolve an item's effective tags. Explicit tags win; otherwise any
+    // legacy isSPI:true item carries the single "legacy_spi" tag so the
+    // current classifier behavior is preserved until Tier 3 re-tags it.
+    function effectiveTags(item) {
+        if (Array.isArray(item.sensitivityTags) && item.sensitivityTags.length > 0) {
+            return item.sensitivityTags;
+        }
+        return item.isSPI ? ["legacy_spi"] : [];
+    }
+
+    // --- 0a. Jurisdiction Rules ---
+    // mosaicAdjust shifts the quasi-identifier threshold. triggerTags is
+    // the set of sensitivity tags that elevate an item to "Restricted"
+    // under this jurisdiction. healthSafeHarbor=true means any health
+    // item is restricted on its own regardless of tags.
     const jurisdictionRules = {
         global: {
             label: "Global (Strictest)",
-            spiAlwaysRestricted: true,
             mosaicAdjust: 0,
             healthSafeHarbor: true,
-            note: "Applies the union of GDPR, CCPA, and HIPAA. SPI and any health identifier are always restricted."
+            triggerTags: ["gdpr_art9", "gdpr_art10", "ccpa_spi", "pipeda", "pipeda_sin", "hipaa_phi", "pci_sad", "pci_chd", "glba_npi", "fcra", "bsa_confidential", "ofac", "bipa", "coppa_gdprk", "credential", "legacy_spi"],
+            note: "Applies the union of GDPR, CCPA, HIPAA, and PIPEDA. Any recognized sensitive tag triggers restricted classification."
         },
         gdpr: {
             label: "GDPR (EU)",
-            spiAlwaysRestricted: true,
             mosaicAdjust: 0,
             healthSafeHarbor: false,
-            note: "Article 9 special-category data is always restricted. Pseudonymized data remains personal data (Recital 26)."
+            triggerTags: ["gdpr_art9", "gdpr_art10", "credential", "legacy_spi"],
+            note: "Article 9 special-category data is always restricted; Article 10 covers criminal convictions. Credentials protected under Art. 32 security duties. Pseudonymized data remains personal data (Recital 26)."
         },
         ccpa: {
             label: "CCPA (California)",
-            spiAlwaysRestricted: true,
             mosaicAdjust: 1,
             healthSafeHarbor: false,
-            note: "Sensitive Personal Information triggers consumer rights. Higher quasi-identifier threshold reflects CCPA's narrower deidentification standard."
+            triggerTags: ["ccpa_spi", "credential", "legacy_spi"],
+            note: "CPRA §1798.140(ae) lists SSN/DL/passport, account credentials, precise geolocation, race/religion/union, comms contents, genetic, biometric for ID, health, and sex life. Political opinions are not in the CCPA SPI list (GDPR only)."
         },
         hipaa: {
             label: "HIPAA (US Health)",
-            spiAlwaysRestricted: true,
             mosaicAdjust: 0,
             healthSafeHarbor: true,
-            note: "Any of the HIPAA Safe Harbor identifiers in combination with health data is PHI and restricted."
+            triggerTags: ["hipaa_phi", "legacy_spi"],
+            note: "Any of the 18 HIPAA Safe Harbor identifiers in combination with health data is PHI and restricted."
         },
         pipeda: {
             label: "PIPEDA (Canada)",
-            spiAlwaysRestricted: true,
             mosaicAdjust: 0,
-            healthSafeHarbor: false,
-            note: "PIPEDA has no bright-line sensitive list (Principle 4.3.6), but OPC guidance treats health, financial (income, balance, credit), racial/ethnic origin, politics, religion, orientation, genetic, biometric, and SIN as almost always sensitive. SIN must only be collected where legally required."
+            healthSafeHarbor: true,
+            triggerTags: ["pipeda", "pipeda_sin", "hipaa_phi", "credential", "legacy_spi"],
+            note: "PIPEDA has no bright-line sensitive list (Principle 4.3.6), but OPC guidance treats health, financial, ethnic origin, politics, religion, orientation, genetic, biometric, and SIN as almost always sensitive. SIN must only be collected where legally required."
         }
     };
 
@@ -278,7 +314,7 @@
         { id: "name_suffix", name: "name_suffix", tier: 3, isSPI: false, category: "Personal Details", regs: ["Generalized"], harm: "None", aliases: ["suffix", "name_suffix", "jr_sr_iii"] },
         { id: "preferred_name", name: "preferred_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification", aliases: ["nickname", "preferred", "alias_name"] },
         { id: "phone_alt", name: "alternate_phone", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Re-Contact", aliases: ["mobile_alt", "secondary_phone", "work_phone", "home_phone"] },
-        { id: "maiden_name", name: "mothers_maiden_name", tier: 2, isSPI: true, category: "Personal Details", regs: ["KBA Secret"], harm: "Auth Bypass", aliases: ["maiden_name", "mothers_maiden", "birth_surname"], remediation: "It is a KBA credential secret, not a unique identifier. Hash/tokenize and treat as a credential. Never use as a business-logic identifier." },
+        { id: "maiden_name", name: "mothers_maiden_name", tier: 2, isSPI: true, category: "Personal Details", regs: ["KBA Secret"], harm: "Auth Bypass", aliases: ["maiden_name", "mothers_maiden", "birth_surname"], remediation: "It is a KBA credential secret, not a unique identifier. Hash/tokenize and treat as a credential. Never use as a business-logic identifier.", sensitivityTags: ["credential"] },
         { id: "email", name: "email_address", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Phishing", aliases: ["email", "mail", "e_mail"] },
         { id: "username", name: "login_username", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Account Targeting", aliases: ["username", "login", "user_name", "handle", "screen_name"] },
         { id: "phone", name: "phone_number", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Smishing", aliases: ["phone", "mobile", "tel", "telephone", "msisdn"] },
@@ -288,7 +324,7 @@
 
         // ---------- Government IDs ----------
         { id: "ssn", name: "social_security_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI / CCPA"], harm: "Identity Theft", aliases: ["ssn", "social_security"] },
-        { id: "sin", name: "social_insurance_number_ca", tier: 1, isSPI: true, category: "Government IDs", regs: ["PIPEDA"], harm: "Identity Theft", aliases: ["sin", "sin_ca", "social_insurance_number", "nas", "numero_assurance_sociale"], remediation: "OPC guidance: collect only where legally required (tax reporting, credit reporting, pension). Never use as a general customer identifier." },
+        { id: "sin", name: "social_insurance_number_ca", tier: 1, isSPI: true, category: "Government IDs", regs: ["PIPEDA"], harm: "Identity Theft", aliases: ["sin", "sin_ca", "social_insurance_number", "nas", "numero_assurance_sociale"], remediation: "OPC guidance: collect only where legally required (tax reporting, credit reporting, pension). Never use as a general customer identifier.", sensitivityTags: ["pipeda_sin", "pipeda"] },
         { id: "national_id", name: "national_id_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Identity Theft", aliases: ["nin", "nric", "aadhaar", "rg_number", "dni", "national_identity_number", "id_number", "curp", "rfc", "cpf"], remediation: "Country-level direct ID. Mask to last 4 in non-privileged views." },
         { id: "passport", name: "passport_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI / CCPA"], harm: "Fraud", aliases: ["passport", "passport_no"] },
         { id: "drivers_license", name: "drivers_license_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI / CCPA"], harm: "Identity Theft", aliases: ["dl", "drivers_license", "driving_license", "license_number"] },
@@ -317,10 +353,10 @@
         { id: "txn_timestamp", name: "transaction_timestamp", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Pattern Analysis", aliases: ["txn_time", "txn_date", "trade_date", "post_date"] },
         { id: "channel", name: "channel_used", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Profiling", aliases: ["channel", "origination_channel", "acquisition_channel", "atm_web_branch"] },
         // ---------- Financial - Card (PCI-DSS) ----------
-        { id: "credit_card", name: "credit_card_number", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS"], harm: "Card Fraud", aliases: ["cc", "card_number", "pan", "credit_card", "ccn"], remediation: "Tokenize or hash if full PAN is not required (PCI-DSS Req. 3.4)." },
-        { id: "card_cvv", name: "card_cvv_cvc", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SAD"], harm: "Card Fraud", aliases: ["cvv", "cvc", "cvv2", "csc"], remediation: "Sensitive Authentication Data. MUST NOT be stored after authorization (PCI-DSS Req. 3.3.1)." },
-        { id: "card_pin", name: "card_pin_block", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SAD"], harm: "Card Fraud", aliases: ["pin", "pin_block", "card_pin"], remediation: "PIN blocks must be HSM-protected and never stored in clear." },
-        { id: "card_track", name: "magstripe_track_data", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SAD"], harm: "Card Cloning", aliases: ["track1", "track2", "track_data", "emv_track"], remediation: "Sensitive Authentication Data. MUST NOT be stored after authorization." },
+        { id: "credit_card", name: "credit_card_number", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS"], harm: "Card Fraud", aliases: ["cc", "card_number", "pan", "credit_card", "ccn"], remediation: "Tokenize or hash if full PAN is not required (PCI-DSS Req. 3.4). Note: under CCPA alone, a PAN is PI but not SPI unless combined with an access code.", sensitivityTags: ["pci_chd", "glba_npi", "pipeda"] },
+        { id: "card_cvv", name: "card_cvv_cvc", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SAD"], harm: "Card Fraud", aliases: ["cvv", "cvc", "cvv2", "csc"], remediation: "Sensitive Authentication Data. MUST NOT be stored after authorization (PCI-DSS Req. 3.3.1).", sensitivityTags: ["pci_sad", "ccpa_spi", "credential"] },
+        { id: "card_pin", name: "card_pin_block", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SAD"], harm: "Card Fraud", aliases: ["pin", "pin_block", "card_pin"], remediation: "PIN blocks must be HSM-protected and never stored in clear.", sensitivityTags: ["pci_sad", "ccpa_spi", "credential"] },
+        { id: "card_track", name: "magstripe_track_data", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SAD"], harm: "Card Cloning", aliases: ["track1", "track2", "track_data", "emv_track"], remediation: "Sensitive Authentication Data. MUST NOT be stored after authorization.", sensitivityTags: ["pci_sad"] },
         { id: "card_expiry", name: "card_expiry_date", tier: 2, isSPI: false, category: "Financial", regs: ["PCI-DSS"], harm: "Card Fraud", aliases: ["exp_date", "expiry", "expiration_date"] },
         { id: "card_holder_name", name: "card_holder_name", tier: 2, isSPI: false, category: "Financial", regs: ["PCI-DSS"], harm: "Identification", aliases: ["cardholder_name", "name_on_card"] },
 
@@ -331,13 +367,13 @@
         { id: "bankruptcy", name: "bankruptcy_or_default", tier: 2, isSPI: true, category: "Credit & Risk", regs: ["FCRA / SPI"], harm: "Discrimination", aliases: ["bankruptcy", "default_record", "delinquency", "ch7_ch13"] },
 
         // ---------- KYC / AML (BSA, OFAC) ----------
-        { id: "pep", name: "pep_flag", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML / Confidential"], harm: "Reputational", aliases: ["politically_exposed", "pep_status"] },
-        { id: "sanctions", name: "sanctions_screening_hit", tier: 2, isSPI: true, category: "KYC / AML", regs: ["OFAC / Confidential"], harm: "Regulatory", aliases: ["ofac_hit", "sanction_match", "watchlist_hit"] },
-        { id: "adverse_media", name: "adverse_media_flag", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Reputational", aliases: ["adverse_media", "negative_news"] },
-        { id: "kyc_risk", name: "kyc_risk_rating", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Reputational", aliases: ["aml_risk", "risk_tier", "customer_risk_rating"] },
-        { id: "sar", name: "suspicious_activity_report", tier: 1, isSPI: true, category: "KYC / AML", regs: ["BSA / Confidential"], harm: "Tipping Off", aliases: ["sar", "str", "sar_id"], remediation: "Tipping-off prohibition. Strictly need-to-know; never expose to the customer." },
-        { id: "source_of_funds", name: "source_of_funds_wealth", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Profiling", aliases: ["sof", "sow", "source_of_wealth"] },
-        { id: "ubo", name: "ultimate_beneficial_owner", tier: 1, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Identification", aliases: ["ubo", "beneficial_owner"] },
+        { id: "pep", name: "pep_flag", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML / Confidential"], harm: "Reputational", aliases: ["politically_exposed", "pep_status"], sensitivityTags: ["bsa_confidential"] },
+        { id: "sanctions", name: "sanctions_screening_hit", tier: 2, isSPI: true, category: "KYC / AML", regs: ["OFAC / Confidential"], harm: "Regulatory", aliases: ["ofac_hit", "sanction_match", "watchlist_hit"], sensitivityTags: ["ofac", "bsa_confidential"] },
+        { id: "adverse_media", name: "adverse_media_flag", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Reputational", aliases: ["adverse_media", "negative_news"], sensitivityTags: ["bsa_confidential"] },
+        { id: "kyc_risk", name: "kyc_risk_rating", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Reputational", aliases: ["aml_risk", "risk_tier", "customer_risk_rating"], sensitivityTags: ["bsa_confidential"] },
+        { id: "sar", name: "suspicious_activity_report", tier: 1, isSPI: true, category: "KYC / AML", regs: ["BSA / Confidential"], harm: "Tipping Off", aliases: ["sar", "str", "sar_id"], remediation: "Tipping-off prohibition. Strictly need-to-know; never expose to the customer.", sensitivityTags: ["bsa_confidential"] },
+        { id: "source_of_funds", name: "source_of_funds_wealth", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Profiling", aliases: ["sof", "sow", "source_of_wealth"], sensitivityTags: ["bsa_confidential", "pipeda"] },
+        { id: "ubo", name: "ultimate_beneficial_owner", tier: 1, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Identification", aliases: ["ubo", "beneficial_owner"], sensitivityTags: ["bsa_confidential"] },
 
         // ---------- Customer Profile (KYC quasi-identifiers) ----------
         { id: "occupation", name: "occupation", tier: 2, isSPI: false, category: "Customer Profile", regs: ["Quasi"], harm: "Profiling", aliases: ["occupation", "job", "profession"] },
@@ -366,7 +402,7 @@
         { id: "gender", name: "gender", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Profiling", aliases: ["sex"] },
         { id: "race", name: "race_ethnicity", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["race", "ethnicity", "ethnic_origin"] },
         { id: "religion", name: "religion", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["religious_belief", "faith"] },
-        { id: "political", name: "political_affiliation", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["political_party", "political_view"] },
+        { id: "political", name: "political_affiliation", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["political_party", "political_view"], sensitivityTags: ["gdpr_art9", "pipeda"] },
         { id: "sexual_orientation", name: "sexual_orientation", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["lgbtq_status", "sex_life"] },
         { id: "trade_union", name: "trade_union_membership", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["union_membership"] },
         { id: "nationality", name: "nationality_citizenship", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Profiling", aliases: ["citizenship", "country_of_citizenship"] },
@@ -390,12 +426,12 @@
         { id: "iris_scan", name: "iris_scan", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["BIPA / Art. 9"], harm: "Irrevocable Compromise", aliases: ["iris_template"] },
 
         // ---------- Authentication & Credentials ----------
-        { id: "password", name: "password_hash", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "Account Takeover", aliases: ["password", "pwd", "pass_hash"], remediation: "Use Argon2 / bcrypt / scrypt with per-user salt." },
-        { id: "security_q", name: "security_question_answer", tier: 1, isSPI: true, category: "Authentication", regs: ["KBA Secret"], harm: "Account Takeover", aliases: ["security_question", "challenge_answer", "kba"], remediation: "Treat answers as credentials and hash them." },
-        { id: "mfa_secret", name: "mfa_otp_secret", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "MFA Bypass", aliases: ["totp_secret", "otp_seed", "mfa_seed"], remediation: "Store in HSM or KMS. Never log." },
-        { id: "session_token", name: "session_token", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "Session Hijack", aliases: ["jwt", "bearer_token", "auth_cookie", "sid"], remediation: "Short TTL, secure+httponly cookies, rotate on privilege change." },
-        { id: "api_key", name: "api_key_secret", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "API Abuse", aliases: ["access_key", "secret_key", "client_secret"], remediation: "Vault-managed. Rotate on compromise." },
-        { id: "recovery_code", name: "account_recovery_code", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "Account Takeover", aliases: ["recovery_code", "backup_code"] },
+        { id: "password", name: "password_hash", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "Account Takeover", aliases: ["password", "pwd", "pass_hash"], remediation: "Use Argon2 / bcrypt / scrypt with per-user salt.", sensitivityTags: ["credential", "ccpa_spi"] },
+        { id: "security_q", name: "security_question_answer", tier: 1, isSPI: true, category: "Authentication", regs: ["KBA Secret"], harm: "Account Takeover", aliases: ["security_question", "challenge_answer", "kba"], remediation: "Treat answers as credentials and hash them.", sensitivityTags: ["credential"] },
+        { id: "mfa_secret", name: "mfa_otp_secret", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "MFA Bypass", aliases: ["totp_secret", "otp_seed", "mfa_seed"], remediation: "Store in HSM or KMS. Never log.", sensitivityTags: ["credential"] },
+        { id: "session_token", name: "session_token", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "Session Hijack", aliases: ["jwt", "bearer_token", "auth_cookie", "sid"], remediation: "Short TTL, secure+httponly cookies, rotate on privilege change.", sensitivityTags: ["credential", "ccpa_spi"] },
+        { id: "api_key", name: "api_key_secret", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "API Abuse", aliases: ["access_key", "secret_key", "client_secret"], remediation: "Vault-managed. Rotate on compromise.", sensitivityTags: ["credential"] },
+        { id: "recovery_code", name: "account_recovery_code", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "Account Takeover", aliases: ["recovery_code", "backup_code"], sensitivityTags: ["credential"] },
 
         // ---------- Communications (CCPA SPI: contents of mail/email/text) ----------
         { id: "call_recording", name: "call_recording", tier: 1, isSPI: true, category: "Communications", regs: ["Wiretap / SPI"], harm: "Confidentiality", aliases: ["voice_recording", "call_audio"], remediation: "Many jurisdictions require explicit consent and retention limits." },
@@ -490,11 +526,15 @@
         const baseThreshold = (size === 'small') ? 2 : 3;
         const effectiveThreshold = baseThreshold + (rules.mosaicAdjust || 0);
 
+        const triggerSet = new Set(rules.triggerTags || []);
+
         let directNodes = [];
         let quasiNodes = [];
         let spiNodes = [];
         let healthNodes = [];
         let remediations = [];
+        // Map of tag -> array of item names that fired it, for the audit log.
+        const firedTagItems = new Map();
 
         const hasFirst = selectedIds.has("first_name");
         const hasLast = selectedIds.has("last_name");
@@ -504,7 +544,17 @@
             const item = dataInventory.find(i => i.id === id);
             if (!item) return;
 
-            if (item.isSPI) spiNodes.push(item);
+            // Sensitivity evaluation via tag intersection with active jurisdiction.
+            const tags = effectiveTags(item);
+            const firedHere = tags.filter(t => triggerSet.has(t));
+            if (firedHere.length > 0) {
+                spiNodes.push(item);
+                firedHere.forEach(t => {
+                    if (!firedTagItems.has(t)) firedTagItems.set(t, []);
+                    firedTagItems.get(t).push(item.name);
+                });
+            }
+
             if (item.category === HEALTH_CATEGORY) healthNodes.push(item);
             if (item.remediation) remediations.push({ name: item.name, text: item.remediation });
 
@@ -541,7 +591,8 @@
             threshold: effectiveThreshold,
             baseThreshold,
             rules,
-            jurKey
+            jurKey,
+            firedTagItems
         });
     }
 
@@ -576,7 +627,7 @@
     }
 
     function updateVerdict(ctx) {
-        const { direct, quasi, spi, health, rems, threshold, baseThreshold, rules, jurKey } = ctx;
+        const { direct, quasi, spi, health, rems, threshold, baseThreshold, rules, jurKey, firedTagItems } = ctx;
         const banner = document.getElementById('status-banner');
         const log = document.getElementById('audit-log');
         const remBox = document.getElementById('remediation-box');
@@ -590,8 +641,11 @@
         if (quasi.length >= threshold) {
             triggers.push({ key: 'mosaic', label: `Mosaic Effect (≥${threshold} quasi-identifiers)` });
         }
-        if (rules.spiAlwaysRestricted && spi.length > 0) {
-            triggers.push({ key: 'spi', label: 'Sensitive PI (SPI) present' });
+        if (spi.length > 0) {
+            const tagNames = [...(firedTagItems ? firedTagItems.keys() : [])]
+                .map(t => TAG_LABELS[t] || t)
+                .join(', ');
+            triggers.push({ key: 'spi', label: tagNames ? `Sensitive data: ${tagNames}` : 'Sensitive data present' });
         }
         if (rules.healthSafeHarbor && health.length > 0) {
             triggers.push({ key: 'health', label: 'Health/biometric data present' });
@@ -620,7 +674,13 @@
                 logsHTML += `<div class="log-entry"><em>Quasi-identifiers below threshold (${quasi.length}/${threshold}): ${quasi.map(q => q.name).join(', ')}.</em></div>`;
             }
             if (spi.length > 0) {
-                logsHTML += `<div class="log-entry"><span class="spi-text">Sensitive Data (SPI):</span> ${spi.map(s => s.name).join(', ')}.</div>`;
+                logsHTML += `<div class="log-entry"><span class="spi-text">Sensitive Data:</span> ${spi.map(s => s.name).join(', ')}.</div>`;
+                if (firedTagItems && firedTagItems.size > 0) {
+                    const tagBreakdown = [...firedTagItems.entries()]
+                        .map(([t, names]) => `<li><strong>${TAG_LABELS[t] || t}:</strong> ${names.join(', ')}</li>`)
+                        .join('');
+                    logsHTML += `<div class="log-entry"><em>Why flagged (by tag):</em><ul style="margin: 6px 0 0 18px; padding: 0;">${tagBreakdown}</ul></div>`;
+                }
             }
             if (rules.healthSafeHarbor && health.length > 0) {
                 logsHTML += `<div class="log-entry"><span class="spi-text">Health Data (PHI scope):</span> ${health.map(h => h.name).join(', ')}.</div>`;
