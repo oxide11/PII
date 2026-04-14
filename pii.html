@@ -65,10 +65,32 @@
 
         /* Right Pane: Verdict */
         .status-banner { padding: 15px; border-radius: 6px; text-align: center; color: white; font-size: 1.2rem; font-weight: 800; margin-bottom: 15px; letter-spacing: 1px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .status-pi { background: var(--pi-color); }
         .status-nonpi { background: var(--nonpi-color); }
+        .status-pi    { background: #ea580c; }
+        .status-spi   { background: var(--pi-color); }
 
-        .audit-log { background: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.85rem; line-height: 1.5; flex: 1; overflow-y: auto; }
+        .trigger-summary { background: #fef3c7; border-left: 3px solid #d97706; padding: 10px 12px; margin-bottom: 12px; border-radius: 4px; font-size: 0.8rem; }
+        .trigger-summary strong { color: #92400e; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.5px; }
+        .trigger-summary ul { margin: 6px 0 0 18px; padding: 0; color: #78350f; }
+        .trigger-summary li { margin-bottom: 3px; }
+
+        .log-item { padding: 8px 10px; border: 1px solid #e2e8f0; border-left-width: 3px; border-radius: 4px; margin-bottom: 6px; background: #fff; }
+        .log-item-name { font-weight: 700; font-size: 0.82rem; color: #0f172a; margin-bottom: 4px; }
+        .log-item-meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+        .log-item-spi   { border-left-color: var(--spi-color); background: #faf5ff; }
+        .log-item-pi    { border-left-color: #ea580c; background: #fff7ed; }
+        .log-item-quasi { border-left-color: #64748b; background: #f8fafc; }
+        .log-item-gen   { border-left-color: #cbd5e1; background: #fff; }
+
+        .tier-chip { font-size: 0.58rem; font-weight: 800; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; color: white; letter-spacing: 0.3px; }
+        .tier-direct { background: var(--pi-color); }
+        .tier-quasi  { background: #f59e0b; }
+        .tier-gen    { background: #94a3b8; }
+        .tag-chip { font-size: 0.58rem; padding: 2px 6px; border-radius: 3px; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; font-weight: 600; }
+        .tag-chip-spi { background: #faf5ff; color: #7e22ce; border-color: #e9d5ff; }
+        .tag-chip-muted { color: #94a3b8; font-style: italic; border-style: dashed; }
+
+        .audit-log { background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.85rem; line-height: 1.5; flex: 1; overflow-y: auto; }
         .log-entry { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; }
         .log-entry:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
         .alert-text { color: var(--pi-color); font-weight: 700; }
@@ -626,6 +648,41 @@
         });
     }
 
+    // Per-item rendering helpers for the audit log.
+    function tierLabel(item) {
+        if (item.tier === 1) return { cls: 'tier-direct', text: 'Direct' };
+        if (item.tier === 2) return { cls: 'tier-quasi',  text: 'Quasi' };
+        return { cls: 'tier-gen', text: 'Generalized' };
+    }
+
+    function classifyItemState(item, tagHits) {
+        if (tagHits && tagHits.length > 0) return 'spi';
+        if (item.tier === 1) return 'pi';
+        if (item.tier === 2) return 'quasi';
+        return 'gen';
+    }
+
+    function renderLogItem(item, tagHits) {
+        const state = classifyItemState(item, tagHits);
+        const tier = tierLabel(item);
+        const chips = [`<span class="tier-chip ${tier.cls}">${tier.text}</span>`];
+        if (tagHits && tagHits.length > 0) {
+            tagHits.forEach(t => {
+                chips.push(`<span class="tag-chip tag-chip-spi">${TAG_LABELS[t] || t}</span>`);
+            });
+        } else if (item.tier === 1) {
+            chips.push(`<span class="tag-chip">Direct identifier</span>`);
+        } else if (item.tier === 2) {
+            chips.push(`<span class="tag-chip">Quasi-identifier &middot; Mosaic input</span>`);
+        } else {
+            chips.push(`<span class="tag-chip tag-chip-muted">Generalized &middot; not identifying</span>`);
+        }
+        return `<div class="log-item log-item-${state}">
+            <div class="log-item-name">${item.name}</div>
+            <div class="log-item-meta">${chips.join('')}</div>
+        </div>`;
+    }
+
     function updateVerdict(ctx) {
         const { direct, quasi, spi, health, rems, threshold, baseThreshold, rules, jurKey, firedTagItems } = ctx;
         const banner = document.getElementById('status-banner');
@@ -633,85 +690,90 @@
         const remBox = document.getElementById('remediation-box');
         const remContent = document.getElementById('remediation-content');
 
-        // Decide PI status. Multiple independent triggers.
+        // Split PI and SPI states independently.
+        const isPIDirect = direct.length > 0;
+        const isPIMosaic = quasi.length >= threshold;
+        const isPI = isPIDirect || isPIMosaic;
+        const isSPI = spi.length > 0 || (rules.healthSafeHarbor && health.length > 0);
+
+        // Build the trigger summary lines.
         const triggers = [];
-        if (direct.length > 0) {
-            triggers.push({ key: 'direct', label: 'Direct identifier present' });
+        if (isPIDirect) {
+            triggers.push(`Direct identifier present: ${direct.map(d => d.name).join(', ')}`);
         }
-        if (quasi.length >= threshold) {
-            triggers.push({ key: 'mosaic', label: `Mosaic Effect (≥${threshold} quasi-identifiers)` });
+        if (isPIMosaic) {
+            triggers.push(`Mosaic Effect triggered: ${quasi.length} quasi-identifiers ≥ threshold ${threshold}`);
+        } else if (quasi.length > 0) {
+            triggers.push(`Quasi-identifiers below threshold (${quasi.length}/${threshold}) — not yet PI by Mosaic`);
         }
-        if (spi.length > 0) {
-            const tagNames = [...(firedTagItems ? firedTagItems.keys() : [])]
-                .map(t => TAG_LABELS[t] || t)
-                .join(', ');
-            triggers.push({ key: 'spi', label: tagNames ? `Sensitive data: ${tagNames}` : 'Sensitive data present' });
+        if (spi.length > 0 && firedTagItems && firedTagItems.size > 0) {
+            [...firedTagItems.entries()].forEach(([t, names]) => {
+                triggers.push(`Sensitive under <strong>${TAG_LABELS[t] || t}</strong>: ${names.join(', ')}`);
+            });
         }
         if (rules.healthSafeHarbor && health.length > 0) {
-            triggers.push({ key: 'health', label: 'Health/biometric data present' });
+            triggers.push(`Health Safe Harbor: ${health.map(h => h.name).join(', ')}`);
         }
 
-        const isPI = triggers.length > 0;
-        let logsHTML = "";
-
-        if (isPI) {
+        // Banner state: SPI > PI > NON-PI.
+        if (isSPI) {
+            banner.className = 'status-banner status-spi';
+            banner.innerText = 'CLASSIFICATION: SPI / RESTRICTED';
+        } else if (isPI) {
             banner.className = 'status-banner status-pi';
-            banner.innerText = 'CLASSIFICATION: PI / RESTRICTED';
-
-            logsHTML += `<div class="log-entry"><span class="alert-text">Schema Classified as Personal Information.</span> Subject to <strong>${rules.label}</strong>.<br><em style="color:#64748b">${rules.note}</em></div>`;
-
-            logsHTML += `<div class="log-entry"><strong>Triggers:</strong><br>${triggers.map(t => `- ${t.label}`).join('<br>')}</div>`;
-
-            if (direct.length > 0) {
-                logsHTML += `<div class="log-entry"><strong>Direct Identifiers:</strong><br>${direct.map(d => `- ${d.name}`).join('<br>')}</div>`;
-            }
-            if (quasi.length >= threshold) {
-                logsHTML += `<div class="log-entry" style="background: #fff1f2; border-left: 3px solid #e11d48; padding-left: 10px;">
-                    <strong>Mosaic Effect Triggered:</strong> Threshold (${threshold}) exceeded. Schema contains ${quasi.length} quasi-identifiers (${quasi.map(q => q.name).join(', ')}).
-                    <br><br><button class="btn btn-outline" style="color:#e11d48; border-color:#fda4af; padding: 4px 8px; font-size: 0.75rem;" onclick="openScienceModal()">How do these identify someone?</button>
-                </div>`;
-            } else if (quasi.length > 0) {
-                logsHTML += `<div class="log-entry"><em>Quasi-identifiers below threshold (${quasi.length}/${threshold}): ${quasi.map(q => q.name).join(', ')}.</em></div>`;
-            }
-            if (spi.length > 0) {
-                logsHTML += `<div class="log-entry"><span class="spi-text">Sensitive Data:</span> ${spi.map(s => s.name).join(', ')}.</div>`;
-                if (firedTagItems && firedTagItems.size > 0) {
-                    const tagBreakdown = [...firedTagItems.entries()]
-                        .map(([t, names]) => `<li><strong>${TAG_LABELS[t] || t}:</strong> ${names.join(', ')}</li>`)
-                        .join('');
-                    logsHTML += `<div class="log-entry"><em>Why flagged (by tag):</em><ul style="margin: 6px 0 0 18px; padding: 0;">${tagBreakdown}</ul></div>`;
-                }
-            }
-            if (rules.healthSafeHarbor && health.length > 0) {
-                logsHTML += `<div class="log-entry"><span class="spi-text">Health Data (PHI scope):</span> ${health.map(h => h.name).join(', ')}.</div>`;
-            }
-
-            if (rems.length > 0) {
-                remBox.style.display = 'block';
-                remContent.innerHTML = rems.map(r => `<div class="rem-item"><strong>${r.name}:</strong> ${r.text}</div>`).join('');
-            } else {
-                remBox.style.display = 'none';
-            }
-
+            banner.innerText = 'CLASSIFICATION: PERSONAL INFORMATION';
         } else {
             banner.className = 'status-banner status-nonpi';
             banner.innerText = 'CLASSIFICATION: NON-PI';
-            remBox.style.display = 'none';
+        }
 
-            if (selectedIds.size === 0) {
-                logsHTML += `<div class="log-entry">Schema is empty.</div>`;
+        // Build the audit log.
+        let logsHTML = '';
+
+        if (selectedIds.size === 0) {
+            logsHTML = `<div class="log-entry">Schema is empty. Select columns or import a schema to classify.</div>`;
+        } else {
+            // Jurisdiction context header.
+            logsHTML += `<div class="log-entry" style="padding-bottom:8px;"><strong>Jurisdiction:</strong> ${rules.label}<br><em style="color:#64748b; font-size: 0.78rem;">${rules.note}</em></div>`;
+
+            // Trigger summary banner.
+            if (triggers.length > 0) {
+                logsHTML += `<div class="trigger-summary">
+                    <strong>Triggers fired</strong>
+                    <ul>${triggers.map(t => `<li>${t}</li>`).join('')}</ul>
+                </div>`;
             } else {
-                logsHTML += `<div class="log-entry">Schema does not meet the threshold for PI under <strong>${rules.label}</strong>.<br><em style="color:#64748b">${rules.note}</em></div>`;
-                if (quasi.length > 0) {
-                    logsHTML += `<div class="log-entry"><em>Note: Contains ${quasi.length} quasi-identifier(s) (${quasi.map(q => q.name).join(', ')}). Threshold is ${threshold}.</em></div>`;
-                }
+                logsHTML += `<div class="trigger-summary" style="background:#ecfeff; border-left-color:#0891b2;">
+                    <strong style="color:#0e7490;">No triggers</strong><br>
+                    <span style="font-size: 0.78rem; color:#0e7490;">Schema does not meet PI or SPI thresholds under ${rules.label}.</span>
+                </div>`;
             }
+
+            // Per-item breakdown in selection order with tier + jurisdiction-aware tag chips.
+            const triggerSet = new Set(rules.triggerTags || []);
+            logsHTML += `<div class="log-items">`;
+            selectedIds.forEach(id => {
+                const item = dataInventory.find(i => i.id === id);
+                if (!item) return;
+                const tags = effectiveTags(item);
+                const hits = tags.filter(t => triggerSet.has(t));
+                logsHTML += renderLogItem(item, hits);
+            });
+            logsHTML += `</div>`;
         }
 
         log.innerHTML = logsHTML;
 
-        // Stash everything needed for the export receipt.
-        lastEvaluation = { direct, quasi, spi, health, rems, threshold, baseThreshold, rules, jurKey, isPI, triggers };
+        // Remediation box: only when there is something to act on and the state is PI or SPI.
+        if ((isPI || isSPI) && rems.length > 0) {
+            remBox.style.display = 'block';
+            remContent.innerHTML = rems.map(r => `<div class="rem-item"><strong>${r.name}:</strong> ${r.text}</div>`).join('');
+        } else {
+            remBox.style.display = 'none';
+        }
+
+        // Stash everything for the export receipt.
+        lastEvaluation = { direct, quasi, spi, health, rems, threshold, baseThreshold, rules, jurKey, isPI, isSPI, triggers, firedTagItems };
     }
 
     function openImportModal() { document.getElementById("importModal").style.display = "block"; }
@@ -749,43 +811,67 @@
         const ev = lastEvaluation;
         if (!ev) return "";
         const lines = [];
+        let verdict = 'NON-PI';
+        if (ev.isSPI) verdict = 'SPI / RESTRICTED';
+        else if (ev.isPI) verdict = 'PERSONAL INFORMATION';
+
         lines.push("DATA PROTECTION IMPACT ASSESSMENT");
         lines.push("=".repeat(40));
         lines.push(`Generated:    ${new Date().toISOString()}`);
         lines.push(`Jurisdiction: ${ev.rules.label}`);
         lines.push(`Dataset size: ${document.getElementById('dataset-size').value}`);
         lines.push(`Threshold:    ${ev.threshold} quasi-identifiers (base ${ev.baseThreshold})`);
-        lines.push(`Verdict:      ${ev.isPI ? 'PI / RESTRICTED' : 'NON-PI'}`);
+        lines.push(`Verdict:      ${verdict}`);
         lines.push("");
-        lines.push("SCHEMA COLUMNS:");
+
+        // Per-item breakdown with tags and the regulations that apply.
+        lines.push("SCHEMA COLUMNS (with applicable regulations):");
         if (selectedIds.size === 0) {
             lines.push("  (none)");
         } else {
+            const triggerSet = new Set(ev.rules.triggerTags || []);
             selectedIds.forEach(id => {
                 const item = dataInventory.find(i => i.id === id);
-                if (item) lines.push(`  - ${item.name} [tier ${item.tier}${item.isSPI ? ', SPI' : ''}]`);
+                if (!item) return;
+                const tierTxt = item.tier === 1 ? 'Direct' : item.tier === 2 ? 'Quasi' : 'Generalized';
+                const tags = effectiveTags(item);
+                const hits = tags.filter(t => triggerSet.has(t));
+                const allTagLabels = tags.map(t => TAG_LABELS[t] || t).join('; ');
+                const firedLabels = hits.map(t => TAG_LABELS[t] || t).join('; ');
+                lines.push(`  - ${item.name}`);
+                lines.push(`      Tier:        ${tierTxt} (tier ${item.tier})`);
+                lines.push(`      Tags:        ${allTagLabels || '(none)'}`);
+                lines.push(`      Fires under ${ev.rules.label}: ${firedLabels || 'no'}`);
             });
         }
         lines.push("");
+
         if (ev.triggers.length > 0) {
             lines.push("TRIGGERS:");
-            ev.triggers.forEach(t => lines.push(`  - ${t.label}`));
+            ev.triggers.forEach(t => lines.push(`  - ${t.replace(/<[^>]+>/g, '')}`));
             lines.push("");
         }
         if (ev.direct.length > 0) {
-            lines.push("DIRECT IDENTIFIERS:");
+            lines.push("DIRECT IDENTIFIERS (contribute to PI):");
             ev.direct.forEach(d => lines.push(`  - ${d.name}`));
             lines.push("");
         }
         if (ev.quasi.length > 0) {
-            lines.push(`QUASI-IDENTIFIERS (${ev.quasi.length}/${ev.threshold}):`);
+            lines.push(`QUASI-IDENTIFIERS (${ev.quasi.length}/${ev.threshold} for Mosaic Effect):`);
             ev.quasi.forEach(q => lines.push(`  - ${q.name}`));
             lines.push("");
         }
         if (ev.spi.length > 0) {
-            lines.push("SENSITIVE PI (SPI):");
+            lines.push("SENSITIVE DATA (trigger SPI classification):");
             ev.spi.forEach(s => lines.push(`  - ${s.name}`));
             lines.push("");
+            if (ev.firedTagItems && ev.firedTagItems.size > 0) {
+                lines.push("SENSITIVITY TAGS FIRED:");
+                [...ev.firedTagItems.entries()].forEach(([t, names]) => {
+                    lines.push(`  - ${TAG_LABELS[t] || t}: ${names.join(', ')}`);
+                });
+                lines.push("");
+            }
         }
         if (ev.health.length > 0) {
             lines.push("HEALTH / BIOMETRIC:");
