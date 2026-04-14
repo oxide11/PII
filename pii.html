@@ -60,7 +60,18 @@
         .schema-container { background: #fff; border-radius: 6px; border: 1px solid var(--border); flex: 1; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
         .schema-header { background: #f8fafc; padding: 12px 20px; border-bottom: 1px solid var(--border); font-weight: 600; display: flex; justify-content: space-between; font-size: 0.95rem; }
         .schema-rows { padding: 15px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
-        .schema-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #ffffff; border: 1px solid var(--border); border-radius: 4px; font-size: 0.85rem; animation: slideIn 0.2s ease-out; }
+        .schema-row { display: flex; flex-direction: column; background: #ffffff; border: 1px solid var(--border); border-radius: 4px; font-size: 0.85rem; animation: slideIn 0.2s ease-out; overflow: hidden; }
+        .schema-row-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; cursor: pointer; gap: 10px; user-select: none; }
+        .schema-row-header:hover { background: #f8fafc; }
+        .schema-row-name { font-weight: 600; color: #0f172a; }
+        .schema-row-right { display: flex; align-items: center; gap: 10px; }
+        .schema-row-toggle { font-size: 0.7rem; color: #94a3b8; width: 10px; text-align: center; transition: transform 0.15s; }
+        .schema-row-detail { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 0 14px; max-height: 0; overflow: hidden; transition: max-height 0.22s ease-out, padding 0.22s ease-out; }
+        .schema-row-detail.expanded { max-height: 500px; padding: 10px 14px 12px; }
+        .schema-row-detail dt { font-size: 0.68rem; text-transform: uppercase; font-weight: 800; color: #64748b; letter-spacing: 0.5px; margin-top: 8px; }
+        .schema-row-detail dt:first-child { margin-top: 0; }
+        .schema-row-detail dd { margin: 3px 0 0 0; font-size: 0.8rem; color: #334155; line-height: 1.5; }
+        .schema-row-detail dd.example { font-family: ui-monospace, Menlo, Consolas, monospace; background: #fff; padding: 6px 10px; border-radius: 3px; color: #475569; font-size: 0.76rem; border: 1px solid #e2e8f0; margin-top: 4px; }
         .schema-harm { font-size: 0.7rem; color: #94a3b8; font-family: -apple-system, sans-serif; text-transform: uppercase;}
 
         /* Right Pane: Verdict */
@@ -673,6 +684,194 @@
         keys.forEach(k => { if (k) importLookup.set(k, item.id); });
     });
 
+    // --- Per-element definitions and example values ---
+    // Displayed in the Target Table Schema accordion when a column is
+    // expanded. Each entry has a one-sentence definition and a realistic
+    // (always synthetic) example value. Categories are filled in
+    // incrementally.
+    const DATA_ELEMENT_META = {
+        // System & Internal
+        uuid:               { definition: "A pseudonymous internal identifier assigned to a user or account, often a UUID or opaque key. Used to correlate records across systems without exposing customer identity directly.", example: "550e8400-e29b-41d4-a716-446655440000" },
+        cif:                { definition: "Customer Information File number - the bank's master key for a customer relationship, linking all their accounts, products, and interactions.", example: "CIF-8472913" },
+        audit_user:         { definition: "Username or actor identifier recorded in audit columns (created_by, modified_by) on every row of a database table. Identifies the staff member who made the change.", example: "j.smith@bank.corp" },
+        correlation_id:     { definition: "Transient identifier that links log entries, API calls, and traces within a single user session or request chain. Typically rotated per session.", example: "corr-7f3a9b2e-4c1d-4e8f" },
+        case_number:        { definition: "Internal reference for a customer service case, complaint, or incident. Used by support staff and regulators to track resolution history.", example: "CASE-2024-00123" },
+        application_number: { definition: "Reference number assigned to a loan, credit, or account application when the customer first applies. Linked to the eventual account if approved.", example: "APP-2024-LOAN-98765" },
+        lei:                { definition: "Legal Entity Identifier - a 20-character alphanumeric ISO 17442 code that uniquely identifies a legal entity participating in financial transactions. Publicly resolvable via GLEIF.", example: "5493001KJTIIGC8Y1R12" },
+
+        // Personal Details
+        title:              { definition: "Honorific or salutation prefix used in formal communication.", example: "Dr." },
+        first_name:         { definition: "Given name or first name of an individual.", example: "Jane" },
+        middle_name:        { definition: "Middle name or middle initial of an individual.", example: "Marie" },
+        last_name:          { definition: "Family name or surname of an individual.", example: "Doe" },
+        name_suffix:        { definition: "Generational or qualifying suffix appended to a name.", example: "Jr." },
+        preferred_name:     { definition: "A name the customer prefers to be addressed by, which may differ from their legal first name (nickname, chosen name, anglicized form).", example: "Jay" },
+        maiden_name:        { definition: "Mother's birth surname. Historically used as a knowledge-based authentication answer. Treat as a credential secret, never as plain metadata.", example: "Thompson" },
+        email:              { definition: "Electronic mail address used to contact the customer, formatted as user@domain.", example: "jane.doe@example.com" },
+        username:           { definition: "Login handle the customer uses to authenticate to digital banking.", example: "jdoe1985" },
+        phone:              { definition: "Primary telephone contact number, typically a mobile phone. Stored in E.164 format in modern systems.", example: "+1 415-555-0123" },
+        social_handle:      { definition: "Customer's handle or profile URL on a social media platform, sometimes collected for identity verification or marketing.", example: "linkedin.com/in/janedoe" },
+        phone_alt:          { definition: "Secondary phone number such as a home line, work phone, or backup mobile.", example: "+1 415-555-0199" },
+        signature:          { definition: "Image or scan of a customer's handwritten signature, captured at onboarding or for wet-ink document matching.", example: "image/png blob, ~50KB" },
+        photo_id:           { definition: "Scan or photograph of a government-issued identification document used during identity verification.", example: "image/jpeg blob, ~300KB, front of driver's license" },
+
+        // Government IDs
+        ssn:                { definition: "US Social Security Number - a 9-digit identifier issued by the Social Security Administration, historically used as a near-universal identifier in US finance and now treated as highly sensitive.", example: "123-45-6789" },
+        sin:                { definition: "Canadian Social Insurance Number - a 9-digit number issued to residents for employment, tax, and government program purposes. PIPEDA treats SIN as special-category data to be collected only where legally required.", example: "123-456-789" },
+        national_id:        { definition: "Country-level national identity number; formats vary by jurisdiction (India Aadhaar, Singapore NRIC, Mexico CURP, Brazil CPF, Spain DNI).", example: "HEGG560427MVZRRL04 (Mexico CURP)" },
+        passport:           { definition: "Passport book or passport card number issued by a government for international travel. Typically 6-9 alphanumeric characters.", example: "X12345678" },
+        drivers_license:    { definition: "Driver's license number issued by a state or provincial licensing authority.", example: "D1234567 (CA)" },
+        tin:                { definition: "Tax Identification Number - generic term for taxpayer identifiers such as US EIN/ITIN, UK UTR, EU VAT number, Italian Codice Fiscale, or an individual's SSN/SIN when used for tax purposes.", example: "EIN 12-3456789 / VAT GB123456789" },
+        voter_id:           { definition: "Voter registration identifier issued by an electoral authority.", example: "VTR-CA-987654321" },
+        visa_number:        { definition: "Identifier on a travel or work visa issued by a destination country.", example: "V1234567" },
+        residence_permit:   { definition: "Identifier on a residence or work permit issued to a foreign national authorized to live in a country.", example: "RP-EU-2024-00456" },
+
+        // Financial - Accounts
+        account_number:     { definition: "Primary identifier of a deposit account (DDA / checking / savings). Usually 8-17 digits, local to a single bank.", example: "000123456789" },
+        iban:               { definition: "International Bank Account Number - ISO 13616 standard for identifying bank accounts across borders. Up to 34 alphanumeric characters.", example: "GB82 WEST 1234 5698 7654 32" },
+        loan_account:       { definition: "Loan or mortgage account identifier used to track principal, interest, and payment history for credit products.", example: "LN-2024-0087654" },
+        investment_account: { definition: "Brokerage, retirement, or investment account identifier tracking a customer's portfolio of securities.", example: "BRK-123-4567890" },
+        crypto_wallet:      { definition: "Public wallet address for a cryptocurrency, used to send and receive on-chain transactions. Pseudonymous but not anonymous - chain analysis can link activity.", example: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0" },
+        swift:              { definition: "SWIFT / BIC code - 8 or 11 character Business Identifier Code (ISO 9362) identifying a specific bank branch for international wire transfers.", example: "CHASUS33XXX" },
+        routing:            { definition: "Routing number (US ABA) or sort code (UK) identifying a bank branch for domestic wire and ACH transfers.", example: "021000021 (US) / 20-00-00 (UK)" },
+        branch_code:        { definition: "Internal code identifying the branch where an account was opened or is currently held.", example: "NYC-042" },
+        account_open_date:  { definition: "The date an account was opened; often used as a proxy for customer tenure.", example: "2018-03-15" },
+        account_type:       { definition: "Classification of the banking product held: checking, savings, money market, CD, credit card, loan, etc.", example: "CHECKING" },
+        product_holdings:   { definition: "The set of products a customer holds with the bank, often stored as a bitmask or comma-separated list.", example: "checking,mortgage,auto_loan,credit_card" },
+        balance_band:       { definition: "Bucketed account balance used for segmentation and reporting instead of an exact figure.", example: "$10K-$50K" },
+
+        // Financial - Cards
+        credit_card:        { definition: "Credit card Primary Account Number (PAN) - typically 15-16 digits, issued on Visa / Mastercard / Amex / Discover networks. Protected by PCI-DSS.", example: "4111 1111 1111 1111 (test PAN)" },
+        card_cvv:           { definition: "Card Verification Value - 3 or 4 digit code printed on the card, used as Sensitive Authentication Data. MUST NOT be stored after transaction authorization (PCI-DSS Req. 3.3.1).", example: "123" },
+        card_pin:           { definition: "Personal Identification Number for card-present and ATM transactions. Stored only as an encrypted PIN block under HSM control.", example: "encrypted PIN block, never displayed in plaintext" },
+        card_track:         { definition: "Magnetic stripe or EMV chip track data containing the PAN, expiration, service code, and discretionary data. Sensitive Authentication Data under PCI-DSS.", example: "%B4111111111111111^DOE/JANE^2612..." },
+        card_expiry:        { definition: "Card expiration date in MM/YY format. Considered cardholder data under PCI-DSS but not sensitive authentication data.", example: "12/26" },
+        card_holder_name:   { definition: "Name embossed on the payment card, typically the legal first and last name of the account holder.", example: "JANE M DOE" },
+
+        // Financial - Transactions
+        txn_amount:         { definition: "Monetary amount of a transaction, in the transaction currency.", example: "152.43" },
+        txn_currency:       { definition: "ISO 4217 3-letter currency code for a transaction amount.", example: "USD" },
+        txn_country:        { definition: "ISO 3166-1 alpha-2 country code where a transaction occurred, often used for cross-border monitoring.", example: "US" },
+        merchant_mcc:       { definition: "Merchant name and/or Merchant Category Code (MCC) describing where a card transaction occurred.", example: "Starbucks (MCC 5814 - Fast Food)" },
+        txn_timestamp:      { definition: "Date and time a transaction was posted or authorized, typically in UTC ISO-8601 format.", example: "2024-10-15T14:32:07Z" },
+        channel:            { definition: "The channel through which a transaction or interaction occurred - web, mobile app, ATM, branch, phone, or call center.", example: "MOBILE_APP" },
+
+        // Credit & Risk
+        credit_score:       { definition: "Numeric score representing a consumer's creditworthiness, issued by a credit bureau. FICO scores range 300-850; international scores vary.", example: "742 (FICO)" },
+        income:             { definition: "Customer's annual gross or net income, typically self-declared during onboarding or credit application.", example: "$87,500" },
+        debt_ratio:         { definition: "Debt-to-income (DTI) ratio - monthly debt payments divided by gross monthly income, used in credit decisioning.", example: "0.32 (32%)" },
+        bankruptcy:         { definition: "Flag or record indicating a past bankruptcy filing, delinquency, or loan default. Drawn from credit bureau files or internal default history.", example: "CH7_2019_DISCHARGED" },
+
+        // KYC / AML
+        pep:                { definition: "Politically Exposed Person flag - indicates a customer holds or has held a prominent public position or is a close family member / associate. Triggers enhanced due diligence under FATF guidance.", example: "true (domestic PEP)" },
+        sanctions:          { definition: "Result of screening a customer against OFAC, UN, EU, and other sanctions lists. A hit indicates a match against an SDN, SSI, or blocked party.", example: "MATCH_OFAC_SDN_CONFIRMED" },
+        adverse_media:      { definition: "Flag or score indicating a customer has been mentioned in negative news or regulatory announcements, found via automated screening.", example: "FLAGGED_HIGH" },
+        kyc_risk:           { definition: "Internal KYC or customer-risk rating assigned by the bank's AML program, driving monitoring intensity and due diligence refresh cadence.", example: "HIGH" },
+        sar:                { definition: "Suspicious Activity Report - a confidential filing to FinCEN or an equivalent national Financial Intelligence Unit when a bank identifies potentially suspicious activity. Tipping-off prohibited under the BSA.", example: "SAR-2024-78923 (confidential)" },
+        source_of_funds:    { definition: "Declared origin of money used to fund an account or transaction (salary, business revenue, inheritance, investment returns). Required for KYC / AML.", example: "Salary - software engineering, Acme Corp" },
+        ubo:                { definition: "Ultimate Beneficial Owner - the natural person(s) who ultimately own or control a legal entity, typically defined as owning 25%+ of shares or voting rights.", example: "Jane Doe (owns 51% via Doe Holdings LLC)" },
+
+        // Customer Profile
+        occupation:         { definition: "General occupation or profession category of the customer, used for KYC and risk scoring.", example: "Software Engineer" },
+        job_title:          { definition: "Specific job title at the customer's current employer.", example: "Senior Software Engineer" },
+        employer:           { definition: "Name of the customer's current employer.", example: "Acme Corporation Inc." },
+        industry:           { definition: "Industry sector of the customer's employer, typically coded by NAICS or SIC.", example: "NAICS 541511 - Custom Computer Programming Services" },
+        income_band:        { definition: "Income bracket used for segmentation instead of an exact figure.", example: "$75K-$100K" },
+        customer_segment:   { definition: "Marketing or product segment used internally to classify customers by wealth, life stage, or behavior.", example: "HNW / Mass Affluent / Retail / Student" },
+        customer_tenure:    { definition: "Number of years the customer has held any product with the bank.", example: "6" },
+        residency_status:   { definition: "Classification of the customer as a resident or non-resident for tax and regulatory purposes.", example: "RESIDENT" },
+        preferred_channel:  { definition: "The channel the customer prefers for communication: email, SMS, push, postal mail, or phone.", example: "EMAIL" },
+
+        // Location
+        address:            { definition: "Full street address including house number, street, unit, city, state / province, postal code, and country.", example: "123 Main St, Apt 4B, San Francisco, CA 94102, USA" },
+        gps:                { definition: "Precise geographic coordinates (latitude, longitude) captured from a device. Typically accurate to within a few meters.", example: "37.7749, -122.4194" },
+        zip_code:           { definition: "5-digit ZIP or postal code identifying a delivery area. In the US, 41,000+ ZIPs cover ~330M people, averaging ~8K per ZIP - one of Sweeney's three quasi-identifiers.", example: "94102" },
+        city:               { definition: "Name of the city or municipality for a customer's address.", example: "San Francisco" },
+        ip_geo:             { definition: "City or region derived from reverse-looking up an IP address. Typically city-level accuracy for static IPs and less reliable for mobile carriers.", example: "San Francisco, CA, US" },
+        timezone:           { definition: "IANA timezone identifier captured from the user's device or preferences.", example: "America/Los_Angeles" },
+        state:              { definition: "State, province, or region within a country.", example: "CA" },
+        country:            { definition: "ISO 3166-1 alpha-2 or alpha-3 country code for the customer's residence.", example: "US" },
+
+        // Demographics
+        dob:                { definition: "Full date of birth of an individual. Highly identifying when combined with ZIP and gender (Sweeney 87%).", example: "1985-06-14" },
+        dob_year:           { definition: "Year of birth only - a generalized form of date of birth that sharply reduces re-identification risk.", example: "1985" },
+        gender:             { definition: "Gender of the individual, captured as a categorical value. Historically binary, now often expanded.", example: "F / M / NB / PREFER_NOT_TO_SAY" },
+        race:               { definition: "Self-identified racial or ethnic background. Special-category data under GDPR Art. 9 and explicit SPI under CCPA.", example: "Asian / Black or African American / Hispanic or Latino / White" },
+        religion:           { definition: "Self-identified religious or philosophical belief. Special-category data under GDPR Art. 9.", example: "Christian / Muslim / Jewish / Hindu / None" },
+        political:          { definition: "Political opinions or party affiliation. Special-category data under GDPR Art. 9 - note CCPA does NOT list political opinions as SPI.", example: "Democrat / Republican / Independent" },
+        sexual_orientation: { definition: "Sexual orientation or sex life. Special-category data under GDPR Art. 9 and explicit SPI under CCPA.", example: "Heterosexual / Gay / Bisexual / Prefer not to say" },
+        trade_union:        { definition: "Trade union membership status. Special-category data under GDPR Art. 9.", example: "Member - IBEW Local 1245" },
+        nationality:        { definition: "Country of citizenship, distinct from country of residence.", example: "US / Canadian / Dual CA/FR" },
+        place_of_birth:     { definition: "City, state, or country where the individual was born. Sometimes used as a KBA answer.", example: "San Francisco, CA, USA" },
+        marital_status:     { definition: "Current marital or civil partnership status.", example: "MARRIED" },
+        dependents:         { definition: "Number of dependents declared by the customer, typically children or family members financially supported.", example: "2" },
+        education:          { definition: "Highest level of education completed.", example: "Bachelor's" },
+        language:           { definition: "Preferred language for customer communication, as a locale code.", example: "en-US" },
+
+        // Health & Biometric
+        mrn:                { definition: "Medical Record Number - unique identifier assigned by a healthcare provider to a patient's medical records.", example: "MRN-00123456" },
+        diagnosis:          { definition: "Specific medical diagnosis, typically coded in ICD-10 or SNOMED CT. HIPAA PHI.", example: "ICD-10 J45.909 (Asthma, unspecified)" },
+        health_insurance:   { definition: "Health insurance plan member or subscriber ID.", example: "ABC12345678-00" },
+        mental_health:      { definition: "Diagnosis, treatment history, or medication record related to mental health. Treated with extra sensitivity beyond general PHI in many jurisdictions.", example: "ICD-10 F32.1 (Major depressive disorder, moderate)" },
+        disability:         { definition: "Disability status or ADA accommodation record.", example: "ADA-ACCOMMODATION-REQUESTED" },
+        genetic:            { definition: "Genetic testing results, DNA sequencing data, or raw genotype. Protected under GINA in the US and Art. 9 GDPR in the EU.", example: "SNP rs1234567:AG" },
+        biometric:          { definition: "Generic biometric template or hash used for identification. Covers fingerprint, face, voice, iris, palm, and behavioral biometrics.", example: "base64-encoded template, ~500 bytes" },
+        fingerprint:        { definition: "Fingerprint minutiae template extracted from a captured fingerprint image. Stored as a hashed or transformed vector, not the raw image.", example: "ISO 19794-2 template, ~512 bytes" },
+        face_template:      { definition: "Facial recognition template - a vector representation of facial features suitable for matching. Protected under BIPA in Illinois and GDPR Art. 9 in the EU.", example: "128-dimensional float vector" },
+        voice_print:        { definition: "Voiceprint or voice biometric template used for speaker identification, often in phone banking voice authentication.", example: "i-vector / x-vector, ~600 floats" },
+        iris_scan:          { definition: "Iris recognition template extracted from a near-infrared capture of the eye. Highly unique per individual.", example: "IrisCode, ~2048 bits" },
+
+        // Authentication
+        password:           { definition: "Hashed representation of a user's authentication password. Best practice is Argon2 / bcrypt / scrypt with per-user salt; plaintext must never be stored.", example: "$argon2id$v=19$m=65536,t=3,p=4$..." },
+        security_q:         { definition: "Answer to a knowledge-based authentication (KBA) challenge such as 'first pet name' or 'mother's maiden name'. Should be hashed like a password.", example: "hashed answer to 'first pet name'" },
+        mfa_secret:         { definition: "Shared secret used to generate one-time passwords (TOTP / HOTP), typically base32-encoded and stored in an HSM or KMS.", example: "JBSWY3DPEHPK3PXP" },
+        session_token:      { definition: "Opaque or JWT session token issued after authentication, used to identify the user on subsequent API calls. Short-lived.", example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." },
+        api_key:            { definition: "Long-lived API key or client secret used by machine-to-machine authentication.", example: "sk_live_abc123def456ghi789..." },
+        recovery_code:      { definition: "One-time backup code issued to a user for account recovery when their primary MFA device is unavailable.", example: "A3F7-B2C9-D8E1" },
+
+        // Communications
+        call_recording:     { definition: "Audio recording of a call with a customer service agent or phone banking session. Many jurisdictions require explicit consent and retention limits.", example: "audio/wav, ~5MB, 8 minutes" },
+        email_body:         { definition: "Full text content of an email to or from the customer. CCPA explicitly classifies mail / email / text contents as SPI.", example: "'Hi Jane, your statement is ready...'" },
+        sms_body:           { definition: "Text content of an SMS message sent to or from the customer.", example: "'Your one-time code is 834291'" },
+        chat_transcript:    { definition: "Full transcript of a chat or support conversation with the customer.", example: "'User: how do I transfer? Agent: sure, I can help...'" },
+
+        // Digital & Security
+        ip_address:         { definition: "Internet Protocol address of a device connecting to a service. IPv4 is 32 bits; IPv6 is 128 bits. GDPR Recital 30 treats IP as personal data.", example: "192.0.2.51 (IPv4) / 2001:db8::1 (IPv6)" },
+        device_id:          { definition: "Stable identifier for a device based on hardware / software fingerprinting, used for fraud detection and session linking.", example: "df5a8c3e7b9f1024" },
+        mac_addr:           { definition: "Media Access Control address - 48-bit hardware identifier of a network interface. Modern OSes randomize MAC for privacy.", example: "00:1A:2B:3C:4D:5E" },
+        imei:               { definition: "International Mobile Equipment Identity - unique 15-digit identifier of a cellular device, tied to the handset not the SIM.", example: "490154203237518" },
+        ad_id:               { definition: "Cross-app advertising identifier - Apple's IDFA or Google's GAID / AAID - used by mobile ad networks to track users across apps.", example: "6D92078A-8246-4BA4-AE5B-76104861E7DC" },
+        cookie_id:          { definition: "Persistent identifier stored in a browser cookie, used for session continuity and cross-page tracking.", example: "_ga=GA1.2.123456789.1680000000" },
+        push_token:         { definition: "Push notification endpoint token issued by APNs (iOS) or FCM (Android) that uniquely addresses an app install on a device.", example: "fCm...1024-char FCM token" },
+        user_agent:         { definition: "Browser User-Agent string describing the browser, version, OS, and device. A fingerprinting input.", example: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15..." },
+        device_os:          { definition: "Operating system name and version reported by a device.", example: "iOS 17.4.1" },
+        screen_res:         { definition: "Screen resolution and viewport dimensions. A browser fingerprinting input.", example: "1920x1080, viewport 1440x900" },
+        clickstream:        { definition: "Sequence of page views and click events during a user session. Used for analytics and fraud detection.", example: "[home, login, accounts, transfer, confirm]" },
+        login_history:      { definition: "Timestamps of recent login events, often including IP and device context.", example: "[2024-10-15T14:32Z from 203.0.113.42]" },
+        email_domain:       { definition: "Domain portion of an email address, separated from the local part. Corporate domains effectively re-identify the employer.", example: "acme-corp.com (from jane@acme-corp.com)" },
+
+        // Employment / HR
+        employee_id:        { definition: "Internal employee identifier assigned by HR, used across payroll, access management, and audit systems.", example: "E-014578" },
+        corporate_email:    { definition: "Work email address issued by an employer, typically first.last@company.com.", example: "jane.doe@bank.corp" },
+        badge_number:       { definition: "Physical access badge number used for building entry and asset access.", example: "BDG-84912" },
+        job_code:           { definition: "Internal HR job classification code, often tied to a compensation band or job family.", example: "SWE-L5" },
+        hire_date:          { definition: "Date the employee joined the organization.", example: "2019-04-01" },
+        manager_id:         { definition: "Employee ID of the direct reporting manager.", example: "E-009876" },
+
+        // Special Categories
+        minor:              { definition: "Flag indicating the customer is under the age of majority (13 COPPA, 16 GDPR-K in some EU member states, 18 in others). Triggers additional consent requirements.", example: "true" },
+        guardian:           { definition: "Name or identifier of a parent or legal guardian, recorded when the primary customer is a minor.", example: "John Doe (parent)" },
+        criminal:           { definition: "Record of criminal convictions, charges, or background check results. GDPR Art. 10 allows processing only under specific legal bases.", example: "CLEAR / CONVICTION 2018" }
+    };
+
+    // IDs of schema rows whose accordion is currently expanded.
+    const expandedSchemaRows = new Set();
+    function toggleSchemaRow(id) {
+        if (expandedSchemaRows.has(id)) expandedSchemaRows.delete(id);
+        else expandedSchemaRows.add(id);
+        updateCollectionUI();
+    }
+
     let selectedIds = new Set();
     let lastEvaluation = null;
 
@@ -803,7 +1002,7 @@
         const schema = document.getElementById('schema-rows');
         document.getElementById('col-count').innerText = `${selectedIds.size} Columns`;
         schema.innerHTML = '';
-        
+
         if (selectedIds.size === 0) {
             schema.innerHTML = `<div style="color: #94a3b8; text-align: center; margin-top: 40px;">Select columns or import schema to build table.</div>`;
             return;
@@ -811,10 +1010,35 @@
 
         selectedIds.forEach(id => {
             const item = dataInventory.find(i => i.id === id);
+            if (!item) return;
+            const meta = DATA_ELEMENT_META[id] || {
+                definition: 'No definition available yet for this element.',
+                example: '—'
+            };
+            const borderLeft = item.tier === 1
+                ? '4px solid var(--pi-color)'
+                : item.isSPI
+                    ? '4px solid var(--spi-color)'
+                    : '1px solid var(--border)';
+            const isExpanded = expandedSchemaRows.has(id);
             const row = document.createElement('div');
             row.className = 'schema-row';
-            row.style.borderLeft = item.tier === 1 ? '4px solid var(--pi-color)' : item.isSPI ? '4px solid var(--spi-color)' : '1px solid var(--border)';
-            row.innerHTML = `<span>${item.name}</span> <span class="schema-harm">${item.harm}</span>`;
+            row.style.borderLeft = borderLeft;
+            row.innerHTML = `
+                <div class="schema-row-header" onclick="toggleSchemaRow('${id}')" role="button" tabindex="0" aria-expanded="${isExpanded}">
+                    <span class="schema-row-name">${item.name}</span>
+                    <span class="schema-row-right">
+                        <span class="schema-harm">${item.harm}</span>
+                        <span class="schema-row-toggle" aria-hidden="true">${isExpanded ? '▾' : '▸'}</span>
+                    </span>
+                </div>
+                <dl class="schema-row-detail ${isExpanded ? 'expanded' : ''}">
+                    <dt>Definition</dt>
+                    <dd>${meta.definition}</dd>
+                    <dt>Example value</dt>
+                    <dd class="example">${meta.example}</dd>
+                </dl>
+            `;
             schema.appendChild(row);
         });
     }
