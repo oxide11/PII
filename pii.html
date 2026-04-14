@@ -116,12 +116,19 @@
         .settings-pill:focus { outline: 2px solid #93c5fd; outline-offset: 2px; }
 
         /* Settings modal form */
-        .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e2e8f0; }
+        .settings-intro { background: #eff6ff; border-left: 4px solid var(--secondary); border-radius: 4px; padding: 12px 14px; margin-bottom: 8px; font-size: 0.82rem; line-height: 1.5; color: #1e3a8a; }
+        .settings-intro strong { color: #1e3a8a; display: inline-block; margin-bottom: 4px; }
+        .settings-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 14px 0; border-bottom: 1px solid #e2e8f0; }
         .settings-row:last-of-type { border-bottom: none; }
-        .settings-row label { font-weight: 600; color: #334155; font-size: 0.85rem; flex: 1; }
-        .settings-row input, .settings-row select { padding: 7px 9px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.85rem; min-width: 180px; font-family: inherit; }
+        .settings-field { flex: 1; min-width: 0; }
+        .settings-field label { font-weight: 700; color: #0f172a; font-size: 0.85rem; display: block; }
+        .settings-help { font-size: 0.72rem; color: #64748b; line-height: 1.45; margin-top: 4px; }
+        .settings-row > input, .settings-row > select { padding: 7px 9px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.85rem; min-width: 190px; font-family: inherit; flex-shrink: 0; }
         .settings-preview { background: #f0f9ff; border: 1px solid #7dd3fc; border-radius: 6px; padding: 12px 14px; margin-top: 16px; font-size: 0.85rem; color: #075985; line-height: 1.5; }
         .settings-preview strong { color: #0c4a6e; font-size: 1.1rem; }
+        .settings-formula { background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 12px 14px; margin-top: 12px; font-size: 0.75rem; color: #475569; line-height: 1.55; }
+        .settings-formula strong { color: #334155; display: inline-block; margin-bottom: 4px; font-size: 0.78rem; }
+        .settings-formula code { background: #e2e8f0; padding: 1px 5px; border-radius: 3px; font-size: 0.78rem; color: #0f172a; }
 
         @keyframes slideIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
     </style>
@@ -234,13 +241,23 @@
     </div>
 
     <div id="settingsModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
-        <div class="modal-content" style="max-width: 560px;">
+        <div class="modal-content" style="max-width: 580px;">
             <span class="close-btn" role="button" tabindex="0" aria-label="Close" onclick="closeSettingsModal()">&times;</span>
             <h3 id="settingsModalTitle">Classifier Settings</h3>
-            <p style="font-size: 0.85rem; color: #64748b; margin-top: 0;">These values drive the Mosaic Effect threshold — the minimum number of quasi-identifiers that make re-identification likely at this dataset scale.</p>
+
+            <div class="settings-intro">
+                <strong>What do these do?</strong><br>
+                These settings drive the <em>Mosaic Effect threshold</em> &mdash; the minimum number of
+                quasi-identifiers in a schema that would likely re-identify someone given your dataset's
+                size and the privacy posture you're targeting. Pick a preset close to your data, or
+                enter a custom row count. Your choices persist locally so you don't have to redo them.
+            </div>
 
             <div class="settings-row">
-                <label for="setting-preset">Use-case preset</label>
+                <div class="settings-field">
+                    <label for="setting-preset">Use-case preset</label>
+                    <div class="settings-help">Quick-start values matched to typical customer book sizes. Pick the closest one, then tune below if needed. Presets assume k=5 moderate privacy.</div>
+                </div>
                 <select id="setting-preset" onchange="onPresetChange()">
                     <option value="enterprise">Enterprise Bank (10M rows)</option>
                     <option value="regional">Regional Bank (500K rows)</option>
@@ -251,12 +268,20 @@
                     <option value="custom">Custom</option>
                 </select>
             </div>
+
             <div class="settings-row">
-                <label for="setting-rows">Row count (N)</label>
+                <div class="settings-field">
+                    <label for="setting-rows">Row count (N)</label>
+                    <div class="settings-help">How many distinct people (rows) are in your dataset. Larger N means each combination of quasi-identifiers is shared by more people, so it's harder to single anyone out. The threshold scales as log&#8322;(N).</div>
+                </div>
                 <input type="number" id="setting-rows" min="2" step="1" oninput="onSettingsInput()" />
             </div>
+
             <div class="settings-row">
-                <label for="setting-k">k-anonymity target (k)</label>
+                <div class="settings-field">
+                    <label for="setting-k">k-anonymity target (k)</label>
+                    <div class="settings-help">The minimum group size you want for every combination of quasi-identifiers. Higher k = stronger privacy target = more aggressive flagging. <strong>k=5</strong> is typical moderate privacy; <strong>k=10</strong> is strong; <strong>k=25</strong> is medical / research-grade.</div>
+                </div>
                 <select id="setting-k" onchange="onSettingsInput()">
                     <option value="2">k=2 (weak — just not unique)</option>
                     <option value="5">k=5 (moderate privacy)</option>
@@ -264,12 +289,27 @@
                     <option value="25">k=25 (very strong)</option>
                 </select>
             </div>
+
             <div class="settings-row">
-                <label for="setting-bits">Bits per quasi-identifier (advanced)</label>
+                <div class="settings-field">
+                    <label for="setting-bits">Bits per quasi (advanced)</label>
+                    <div class="settings-help">Average information content per quasi-identifier in bits. <strong>~11</strong> matches Sweeney's demographic triple (5-digit ZIP + full DOB + gender). Lower values model coarser fields (state, birth year). Higher values model narrower fields (9-digit ZIP, employer name).</div>
+                </div>
                 <input type="number" id="setting-bits" min="1" max="32" step="1" oninput="onSettingsInput()" />
             </div>
 
             <div class="settings-preview" id="setting-preview"></div>
+
+            <div class="settings-formula">
+                <strong>How the math works</strong><br>
+                k-anonymity requires each combination of quasi-identifiers to represent at least <em>k</em> people.
+                With N rows and ~<em>b</em> bits per quasi, the maximum number of quasi-identifiers before
+                a combination becomes rarer than k is
+                <code>Q<sub>safe</sub> = &lfloor;log&#8322;(N/k) / b&rfloor;</code>. The Mosaic threshold is
+                <code>Q<sub>safe</sub> + 1</code> &mdash; the first Q at which the schema likely leaks &mdash;
+                clamped to at least 2 so a single quasi cannot flip the banner by itself. CCPA adds +1 to this
+                threshold because of its narrower de-identification standard.
+            </div>
 
             <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px;">
                 <button class="btn btn-outline" style="color: #64748b; border-color: #cbd5e1;" onclick="closeSettingsModal()">Cancel</button>
@@ -283,15 +323,21 @@
     // Drive the Mosaic Effect threshold from a real row count and a
     // k-anonymity target instead of a fixed Small/Large toggle. The
     // threshold represents the minimum number of quasi-identifiers
-    // required to likely re-identify an individual at the given
+    // that could likely re-identify an individual at the given
     // dataset scale and privacy posture.
     //
-    // Math: total entropy needed to single someone out is log2(N) + log2(k).
-    // If each quasi carries ~bitsPerQuasi bits of entropy on average
-    // (Sweeney: ~11 bits for ZIP/DOB/gender-class demographics), then
-    // the minimum Q is ceil((log2(N) + log2(k)) / bitsPerQuasi). We
-    // clamp to >= 2 so a schema with a single quasi-identifier is
-    // never auto-flagged by the Mosaic path alone.
+    // Derivation (k-anonymity):
+    //   - Each combination of quasi-identifiers should represent >= k records.
+    //   - Distinct combos in the data <= N / k.
+    //   - If each quasi carries ~bitsPerQuasi bits of entropy on average
+    //     (Sweeney: ~11 bits for ZIP/DOB/gender-class demographics), then
+    //     2^(Q * bitsPerQuasi) <= N / k, so Q <= log2(N/k) / bitsPerQuasi.
+    //   - Maximum "safe" Q = floor(log2(N/k) / bitsPerQuasi).
+    //   - Threshold (first unsafe Q) = safeMax + 1, clamped to >= 2 so a
+    //     single quasi never trips Mosaic on its own.
+    //
+    // Intuition: larger N -> log2(N/k) grows -> more quasis allowed.
+    //            larger k -> log2(N/k) shrinks -> fewer quasis allowed.
     const SETTINGS_PRESETS = {
         enterprise: { label: "Enterprise Bank",     rowCount: 10000000,  k: 5, bitsPerQuasi: 11 },
         regional:   { label: "Regional Bank",       rowCount: 500000,    k: 5, bitsPerQuasi: 11 },
@@ -313,8 +359,11 @@
         const N    = Math.max(2, Number(s.rowCount)     || 1000);
         const k    = Math.max(2, Number(s.k)            || 5);
         const bits = Math.max(1, Number(s.bitsPerQuasi) || 11);
-        const entropyNeeded = Math.log2(N) + Math.log2(k);
-        return Math.max(2, Math.ceil(entropyNeeded / bits));
+        // Maximum Q for which the dataset is ~k-anonymous on average.
+        const safeMax = Math.floor(Math.log2(N / k) / bits);
+        // Threshold = first unsafe Q, never below 2 so a single quasi
+        // cannot flip the banner by Mosaic alone.
+        return Math.max(2, safeMax + 1);
     }
 
     function formatRowCount(n) {
@@ -937,12 +986,14 @@
         const k    = parseInt(document.getElementById('setting-k').value, 10)    || 5;
         const bits = parseInt(document.getElementById('setting-bits').value, 10) || 11;
         const threshold = computeMosaicThreshold({ rowCount: rows, k, bitsPerQuasi: bits });
-        const entropy = (Math.log2(rows) + Math.log2(k)).toFixed(1);
+        const safeBits = Math.log2(rows / k);
+        const safeMax = Math.floor(safeBits / bits);
         document.getElementById('setting-preview').innerHTML =
-            `Computed Mosaic threshold: <strong>${threshold}</strong> quasi-identifiers<br>` +
+            `Computed Mosaic threshold: <strong>${threshold}</strong> quasi-identifier${threshold === 1 ? '' : 's'}<br>` +
             `<span style="color:#0369a1; font-size:0.78rem;">` +
-            `log&#8322;(${rows.toLocaleString()}) + log&#8322;(k=${k}) = ${entropy} bits of entropy needed &middot; ` +
-            `&#8776;${bits} bits per quasi &#8594; ceil(${entropy}/${bits}) = <strong>${threshold}</strong>` +
+            `log&#8322;(N / k) = log&#8322;(${rows.toLocaleString()} / ${k}) = ${safeBits.toFixed(1)} bits &middot; ` +
+            `&#8776;${bits} bits per quasi &#8594; safe Q = ${safeMax}, ` +
+            `threshold = <strong>${threshold}</strong>` +
             `</span>`;
     }
 
