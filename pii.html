@@ -226,7 +226,7 @@
     // --- 0. Sensitivity Tag Vocabulary ---
     // Each inventory item can declare an explicit `sensitivityTags: [...]`
     // array drawn from this vocabulary. Each jurisdiction declares which
-    // tags are treated as "Restricted" via its own `triggerTags` list.
+    // tags elevate an item to SPI via its own `triggerTags` list.
     // Items without explicit tags fall back to the "legacy_spi" tag when
     // their old `isSPI: true` flag is set, so behavior is preserved for
     // any item that has not yet been re-tagged.
@@ -261,9 +261,9 @@
 
     // --- 0a. Jurisdiction Rules ---
     // mosaicAdjust shifts the quasi-identifier threshold. triggerTags is
-    // the set of sensitivity tags that elevate an item to "Restricted"
-    // under this jurisdiction. healthSafeHarbor=true means any health
-    // item is restricted on its own regardless of tags.
+    // the set of sensitivity tags that elevate an item to SPI under this
+    // jurisdiction. healthSafeHarbor=true means any health item is SPI
+    // on its own regardless of tags.
     const jurisdictionRules = {
         global: {
             label: "Global (Strictest)",
@@ -718,7 +718,7 @@
         // Banner state: SPI > PI > NON-PI.
         if (isSPI) {
             banner.className = 'status-banner status-spi';
-            banner.innerText = 'CLASSIFICATION: SPI / RESTRICTED';
+            banner.innerText = 'CLASSIFICATION: SPI';
         } else if (isPI) {
             banner.className = 'status-banner status-pi';
             banner.innerText = 'CLASSIFICATION: PERSONAL INFORMATION';
@@ -812,7 +812,7 @@
         if (!ev) return "";
         const lines = [];
         let verdict = 'NON-PI';
-        if (ev.isSPI) verdict = 'SPI / RESTRICTED';
+        if (ev.isSPI) verdict = 'SPI';
         else if (ev.isPI) verdict = 'PERSONAL INFORMATION';
 
         lines.push("DATA PROTECTION IMPACT ASSESSMENT");
