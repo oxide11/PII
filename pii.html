@@ -249,43 +249,117 @@
     }
 
     // --- 1. The Exhaustive Data Inventory ---
+    // Coverage emphasis: every recognized SPI category for a global bank is
+    // represented. Quasi-identifiers and generalized fields are kept where
+    // they materially affect classification (Mosaic Effect inputs).
     const dataInventory = [
-        // System & Internal
+        // ---------- System & Internal ----------
         { id: "uuid", name: "user_uuid / account_id", tier: 1, isSPI: false, category: "System & Internal", regs: ["Pseudonymized PI"], harm: "Tracking", aliases: ["user_uuid", "account_id", "uuid", "user_id", "userid"], remediation: "Ensure strict RBAC. Pseudonymized data remains PI." },
+        { id: "cif", name: "customer_information_file", tier: 1, isSPI: false, category: "System & Internal", regs: ["Pseudonymized PI"], harm: "Tracking", aliases: ["cif", "cif_number", "customer_id", "cust_id", "internal_customer_id"], remediation: "Master customer key. Limit to need-to-know systems." },
 
-        // Names & Contact
+        // ---------- Personal Details ----------
         { id: "first_name", name: "first_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification", aliases: ["fname", "firstname", "given_name"] },
         { id: "last_name", name: "last_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification", aliases: ["lname", "lastname", "surname", "family_name"] },
+        { id: "maiden_name", name: "mothers_maiden_name", tier: 1, isSPI: true, category: "Personal Details", regs: ["KBA Secret"], harm: "Auth Bypass", aliases: ["maiden_name", "mothers_maiden", "birth_surname"], remediation: "Commonly used as KBA secret. Treat as a credential, never as plain metadata." },
         { id: "email", name: "email_address", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Phishing", aliases: ["email", "mail", "e_mail"] },
-        { id: "phone", name: "phone_number", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Smishing", aliases: ["phone", "mobile", "tel", "telephone"] },
+        { id: "phone", name: "phone_number", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Smishing", aliases: ["phone", "mobile", "tel", "telephone", "msisdn"] },
+        { id: "signature", name: "handwritten_signature", tier: 1, isSPI: true, category: "Personal Details", regs: ["SPI"], harm: "Forgery", aliases: ["signature_image", "wet_signature"], remediation: "Encrypt at rest and treat as a binding credential artifact." },
+        { id: "photo_id", name: "photo_id_image", tier: 1, isSPI: true, category: "Personal Details", regs: ["SPI"], harm: "Identity Theft", aliases: ["id_photo", "id_image", "id_scan", "photo_id"], remediation: "Onboarding artifacts. Encrypt and auto-purge per retention policy." },
 
-        // Government IDs
-        { id: "ssn", name: "social_security_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Identity Theft", aliases: ["ssn", "social_security"] },
-        { id: "passport", name: "passport_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Fraud", aliases: ["passport"] },
+        // ---------- Government IDs ----------
+        { id: "ssn", name: "social_security_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI / CCPA"], harm: "Identity Theft", aliases: ["ssn", "social_security"] },
+        { id: "national_id", name: "national_id_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Identity Theft", aliases: ["nin", "nric", "aadhaar", "rg_number", "dni", "national_identity_number", "id_number", "curp"], remediation: "Country-level direct ID. Mask to last 4 in non-privileged views." },
+        { id: "passport", name: "passport_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI / CCPA"], harm: "Fraud", aliases: ["passport", "passport_no"] },
+        { id: "drivers_license", name: "drivers_license_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI / CCPA"], harm: "Identity Theft", aliases: ["dl", "drivers_license", "driving_license", "license_number"] },
+        { id: "tin", name: "tax_id_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI / CCPA"], harm: "Tax Fraud", aliases: ["tin", "tax_id", "ein", "itin", "vat_number", "fiscal_code", "tax_residency"] },
+        { id: "voter_id", name: "voter_id", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Identity Theft", aliases: ["voter_registration", "elector_id"] },
+        { id: "visa_number", name: "visa_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Immigration Risk", aliases: ["visa", "visa_no"] },
+        { id: "residence_permit", name: "residence_permit", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Immigration Risk", aliases: ["residence_permit_number", "residency_id"] },
 
-        // Financial
-        { id: "credit_card", name: "credit_card_number", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SPI"], harm: "Financial Fraud", aliases: ["cc", "card_number", "pan", "credit_card"], remediation: "Tokenize or hash if full PAN is not required." },
+        // ---------- Financial - Account (GLBA NPI) ----------
+        { id: "account_number", name: "bank_account_number", tier: 1, isSPI: true, category: "Financial", regs: ["GLBA / NPI"], harm: "Financial Fraud", aliases: ["acct_no", "account_no", "dda", "dda_number", "savings_account"], remediation: "Mask all but last 4 digits in non-privileged views." },
+        { id: "iban", name: "iban", tier: 1, isSPI: true, category: "Financial", regs: ["GLBA / NPI"], harm: "Wire Fraud", aliases: ["iban", "international_bank_account_number"] },
+        { id: "loan_account", name: "loan_account_number", tier: 1, isSPI: true, category: "Financial", regs: ["GLBA / NPI"], harm: "Financial Fraud", aliases: ["loan_no", "loan_id", "mortgage_no", "mortgage_id"] },
+        { id: "investment_account", name: "investment_account_number", tier: 1, isSPI: true, category: "Financial", regs: ["GLBA / NPI"], harm: "Financial Fraud", aliases: ["brokerage_account", "portfolio_id", "investment_id"] },
+        { id: "crypto_wallet", name: "crypto_wallet_address", tier: 1, isSPI: true, category: "Financial", regs: ["Pseudonymized PI"], harm: "Chain Analysis Re-ID", aliases: ["wallet", "wallet_address", "btc_address", "eth_address"], remediation: "Wallets are pseudonymous, not anonymous. Apply the same controls as account numbers." },
+        { id: "swift", name: "swift_bic_code", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Routing Disclosure", aliases: ["swift", "bic", "swift_code"] },
+        { id: "routing", name: "routing_number", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Routing Disclosure", aliases: ["aba", "routing", "sort_code", "routing_no"] },
+        // ---------- Financial - Card (PCI-DSS) ----------
+        { id: "credit_card", name: "credit_card_number", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS"], harm: "Card Fraud", aliases: ["cc", "card_number", "pan", "credit_card", "ccn"], remediation: "Tokenize or hash if full PAN is not required (PCI-DSS Req. 3.4)." },
+        { id: "card_cvv", name: "card_cvv_cvc", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SAD"], harm: "Card Fraud", aliases: ["cvv", "cvc", "cvv2", "csc"], remediation: "Sensitive Authentication Data. MUST NOT be stored after authorization (PCI-DSS Req. 3.3.1)." },
+        { id: "card_pin", name: "card_pin_block", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SAD"], harm: "Card Fraud", aliases: ["pin", "pin_block", "card_pin"], remediation: "PIN blocks must be HSM-protected and never stored in clear." },
+        { id: "card_track", name: "magstripe_track_data", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SAD"], harm: "Card Cloning", aliases: ["track1", "track2", "track_data", "emv_track"], remediation: "Sensitive Authentication Data. MUST NOT be stored after authorization." },
+        { id: "card_expiry", name: "card_expiry_date", tier: 2, isSPI: false, category: "Financial", regs: ["PCI-DSS"], harm: "Card Fraud", aliases: ["exp_date", "expiry", "expiration_date"] },
+        { id: "card_holder_name", name: "card_holder_name", tier: 2, isSPI: false, category: "Financial", regs: ["PCI-DSS"], harm: "Identification", aliases: ["cardholder_name", "name_on_card"] },
 
-        // Location
+        // ---------- Credit & Risk (FCRA) ----------
+        { id: "credit_score", name: "credit_score", tier: 2, isSPI: true, category: "Credit & Risk", regs: ["FCRA / SPI"], harm: "Discrimination", aliases: ["fico", "credit_rating", "vantage_score"] },
+        { id: "income", name: "annual_income", tier: 2, isSPI: true, category: "Credit & Risk", regs: ["SPI"], harm: "Profiling", aliases: ["salary", "income", "gross_income", "household_income"] },
+        { id: "debt_ratio", name: "debt_to_income_ratio", tier: 2, isSPI: true, category: "Credit & Risk", regs: ["SPI"], harm: "Profiling", aliases: ["dti"] },
+        { id: "bankruptcy", name: "bankruptcy_or_default", tier: 2, isSPI: true, category: "Credit & Risk", regs: ["FCRA / SPI"], harm: "Discrimination", aliases: ["bankruptcy", "default_record", "delinquency", "ch7_ch13"] },
+
+        // ---------- KYC / AML (BSA, OFAC) ----------
+        { id: "pep", name: "pep_flag", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML / Confidential"], harm: "Reputational", aliases: ["politically_exposed", "pep_status"] },
+        { id: "sanctions", name: "sanctions_screening_hit", tier: 2, isSPI: true, category: "KYC / AML", regs: ["OFAC / Confidential"], harm: "Regulatory", aliases: ["ofac_hit", "sanction_match", "watchlist_hit"] },
+        { id: "adverse_media", name: "adverse_media_flag", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Reputational", aliases: ["adverse_media", "negative_news"] },
+        { id: "kyc_risk", name: "kyc_risk_rating", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Reputational", aliases: ["aml_risk", "risk_tier", "customer_risk_rating"] },
+        { id: "sar", name: "suspicious_activity_report", tier: 1, isSPI: true, category: "KYC / AML", regs: ["BSA / Confidential"], harm: "Tipping Off", aliases: ["sar", "str", "sar_id"], remediation: "Tipping-off prohibition. Strictly need-to-know; never expose to the customer." },
+        { id: "source_of_funds", name: "source_of_funds_wealth", tier: 2, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Profiling", aliases: ["sof", "sow", "source_of_wealth"] },
+        { id: "ubo", name: "ultimate_beneficial_owner", tier: 1, isSPI: true, category: "KYC / AML", regs: ["AML"], harm: "Identification", aliases: ["ubo", "beneficial_owner"] },
+
+        // ---------- Location ----------
         { id: "address", name: "street_address", tier: 1, isSPI: false, category: "Location", regs: ["Direct ID"], harm: "Stalking", aliases: ["address", "street", "address_line_1"], remediation: "Truncate to ZIP or City to anonymize." },
-        { id: "gps", name: "precise_geolocation", tier: 1, isSPI: true, category: "Location", regs: ["SPI"], harm: "Physical Tracking", aliases: ["gps", "lat_long", "latitude", "longitude", "coordinates"], remediation: "Downgrade coordinates to generic region bounds." },
+        { id: "gps", name: "precise_geolocation", tier: 1, isSPI: true, category: "Location", regs: ["SPI / CCPA"], harm: "Physical Tracking", aliases: ["gps", "lat_long", "latitude", "longitude", "coordinates"], remediation: "Downgrade coordinates to generic region bounds." },
         { id: "zip_code", name: "zip_code_5", tier: 2, isSPI: false, category: "Location", regs: ["Quasi"], harm: "Targeting", aliases: ["zip", "zipcode", "zip_code", "postal_code", "postcode"] },
         { id: "state", name: "state_province", tier: 3, isSPI: false, category: "Location", regs: ["Generalized"], harm: "None", aliases: ["state", "province", "region"] },
+        { id: "country", name: "country_of_residence", tier: 3, isSPI: false, category: "Location", regs: ["Generalized"], harm: "None", aliases: ["country", "country_code", "iso_country"] },
 
-        // Demographics
+        // ---------- Demographics ----------
         { id: "dob", name: "date_of_birth", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Auth Bypass", aliases: ["dob", "birthdate", "birth_date", "date_of_birth"], remediation: "Downgrade to 'Year of Birth' to break Mosaic Effect." },
         { id: "dob_year", name: "birth_year", tier: 3, isSPI: false, category: "Demographics", regs: ["Generalized"], harm: "None", aliases: ["birth_year", "yob", "year_of_birth"] },
         { id: "gender", name: "gender", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Profiling", aliases: ["sex"] },
-        { id: "race", name: "race_ethnicity", tier: 2, isSPI: true, category: "Demographics", regs: ["SPI"], harm: "Discrimination", aliases: ["race", "ethnicity"] },
+        { id: "race", name: "race_ethnicity", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["race", "ethnicity", "ethnic_origin"] },
+        { id: "religion", name: "religion", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["religious_belief", "faith"] },
+        { id: "political", name: "political_affiliation", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["political_party", "political_view"] },
+        { id: "sexual_orientation", name: "sexual_orientation", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["lgbtq_status", "sex_life"] },
+        { id: "trade_union", name: "trade_union_membership", tier: 2, isSPI: true, category: "Demographics", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["union_membership"] },
+        { id: "nationality", name: "nationality_citizenship", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Profiling", aliases: ["citizenship", "country_of_citizenship"] },
 
-        // Health & Biometric
-        { id: "mrn", name: "medical_record_no", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["SPI / HIPAA"], harm: "Medical ID Theft", aliases: ["mrn", "medical_record_number", "patient_id"] },
-        { id: "diagnosis", name: "specific_diagnosis", tier: 2, isSPI: true, category: "Health & Biometric", regs: ["SPI"], harm: "Stigma", aliases: ["diagnosis", "icd10", "condition"] },
-        { id: "biometric", name: "biometric_hash", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["SPI"], harm: "Irrevocable Compromise", aliases: ["biometric", "fingerprint", "face_template"], remediation: "Highest encryption required." },
+        // ---------- Health & Biometric (HIPAA, BIPA, GDPR Art. 9) ----------
+        { id: "mrn", name: "medical_record_no", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["HIPAA"], harm: "Medical ID Theft", aliases: ["mrn", "medical_record_number", "patient_id"] },
+        { id: "diagnosis", name: "specific_diagnosis", tier: 2, isSPI: true, category: "Health & Biometric", regs: ["HIPAA / SPI"], harm: "Stigma", aliases: ["diagnosis", "icd10", "condition"] },
+        { id: "health_insurance", name: "health_insurance_id", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["HIPAA"], harm: "Medical ID Theft", aliases: ["insurance_id", "policy_number_health", "subscriber_id"] },
+        { id: "mental_health", name: "mental_health_record", tier: 2, isSPI: true, category: "Health & Biometric", regs: ["HIPAA / SPI"], harm: "Stigma", aliases: ["mental_health", "psych_record"] },
+        { id: "disability", name: "disability_status", tier: 2, isSPI: true, category: "Health & Biometric", regs: ["GDPR Art. 9"], harm: "Discrimination", aliases: ["disability", "ada_status"] },
+        { id: "genetic", name: "genetic_data", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["GINA / Art. 9"], harm: "Genetic Discrimination", aliases: ["dna", "genome", "snp"] },
+        { id: "biometric", name: "biometric_hash_generic", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["BIPA / Art. 9"], harm: "Irrevocable Compromise", aliases: ["biometric"], remediation: "Highest encryption required. Cannot be reissued if compromised." },
+        { id: "fingerprint", name: "fingerprint_template", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["BIPA / Art. 9"], harm: "Irrevocable Compromise", aliases: ["fingerprint", "fp_template"] },
+        { id: "face_template", name: "face_recognition_template", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["BIPA / Art. 9"], harm: "Irrevocable Compromise", aliases: ["face_id", "facial_template"] },
+        { id: "voice_print", name: "voiceprint", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["BIPA / Art. 9"], harm: "Voice ID Theft", aliases: ["voice_template", "voice_biometric"] },
+        { id: "iris_scan", name: "iris_scan", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["BIPA / Art. 9"], harm: "Irrevocable Compromise", aliases: ["iris_template"] },
 
-        // Digital & Security
+        // ---------- Authentication & Credentials ----------
+        { id: "password", name: "password_hash", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "Account Takeover", aliases: ["password", "pwd", "pass_hash"], remediation: "Use Argon2 / bcrypt / scrypt with per-user salt." },
+        { id: "security_q", name: "security_question_answer", tier: 1, isSPI: true, category: "Authentication", regs: ["KBA Secret"], harm: "Account Takeover", aliases: ["security_question", "challenge_answer", "kba"], remediation: "Treat answers as credentials and hash them." },
+        { id: "mfa_secret", name: "mfa_otp_secret", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "MFA Bypass", aliases: ["totp_secret", "otp_seed", "mfa_seed"], remediation: "Store in HSM or KMS. Never log." },
+        { id: "session_token", name: "session_token", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "Session Hijack", aliases: ["jwt", "bearer_token", "auth_cookie", "sid"], remediation: "Short TTL, secure+httponly cookies, rotate on privilege change." },
+        { id: "api_key", name: "api_key_secret", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "API Abuse", aliases: ["access_key", "secret_key", "client_secret"], remediation: "Vault-managed. Rotate on compromise." },
+        { id: "recovery_code", name: "account_recovery_code", tier: 1, isSPI: true, category: "Authentication", regs: ["Security"], harm: "Account Takeover", aliases: ["recovery_code", "backup_code"] },
+
+        // ---------- Communications (CCPA SPI: contents of mail/email/text) ----------
+        { id: "call_recording", name: "call_recording", tier: 1, isSPI: true, category: "Communications", regs: ["Wiretap / SPI"], harm: "Confidentiality", aliases: ["voice_recording", "call_audio"], remediation: "Many jurisdictions require explicit consent and retention limits." },
+        { id: "email_body", name: "email_body_content", tier: 2, isSPI: true, category: "Communications", regs: ["CCPA SPI"], harm: "Confidentiality", aliases: ["email_content", "message_body"] },
+        { id: "sms_body", name: "sms_message_content", tier: 2, isSPI: true, category: "Communications", regs: ["CCPA SPI"], harm: "Confidentiality", aliases: ["sms_content", "text_message"] },
+        { id: "chat_transcript", name: "chat_transcript", tier: 2, isSPI: true, category: "Communications", regs: ["CCPA SPI"], harm: "Confidentiality", aliases: ["chat_log", "support_transcript"] },
+
+        // ---------- Digital & Security ----------
         { id: "ip_address", name: "ip_address", tier: 1, isSPI: false, category: "Digital & Security", regs: ["Direct ID"], harm: "Cyber Profiling", aliases: ["ip", "ipaddress", "remote_addr"] },
-        { id: "password", name: "password_hash", tier: 1, isSPI: true, category: "Digital & Security", regs: ["Security"], harm: "Account Takeover", aliases: ["password", "pwd", "pass_hash"], remediation: "Ensure strong salting/hashing algorithms." }
+        { id: "device_id", name: "device_fingerprint", tier: 1, isSPI: false, category: "Digital & Security", regs: ["Direct ID"], harm: "Tracking", aliases: ["device_id", "fingerprint", "device_hash"] },
+
+        // ---------- Special Categories ----------
+        { id: "minor", name: "minor_under_13_flag", tier: 2, isSPI: true, category: "Special Categories", regs: ["COPPA / GDPR-K"], harm: "Child Protection", aliases: ["age_under_13", "minor_flag", "child"], remediation: "Children's data requires verifiable parental consent. Avoid collection where possible." },
+        { id: "guardian", name: "parent_guardian_info", tier: 1, isSPI: true, category: "Special Categories", regs: ["SPI"], harm: "Family Linkage", aliases: ["parent_name", "guardian_name"] },
+        { id: "criminal", name: "criminal_record", tier: 1, isSPI: true, category: "Special Categories", regs: ["GDPR Art. 10"], harm: "Discrimination", aliases: ["criminal_history", "conviction_record", "background_check"] }
     ];
 
     // Build a normalized lookup map: token -> inventory id.
