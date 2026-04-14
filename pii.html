@@ -103,6 +103,7 @@
                     <option value="gdpr">GDPR (Europe)</option>
                     <option value="ccpa">CCPA (California)</option>
                     <option value="hipaa">HIPAA (US Health)</option>
+                    <option value="pipeda">PIPEDA (Canada)</option>
                 </select>
             </div>
             <div class="control-group">
@@ -233,6 +234,13 @@
             mosaicAdjust: 0,
             healthSafeHarbor: true,
             note: "Any of the HIPAA Safe Harbor identifiers in combination with health data is PHI and restricted."
+        },
+        pipeda: {
+            label: "PIPEDA (Canada)",
+            spiAlwaysRestricted: true,
+            mosaicAdjust: 0,
+            healthSafeHarbor: false,
+            note: "PIPEDA has no bright-line sensitive list (Principle 4.3.6), but OPC guidance treats health, financial (income, balance, credit), racial/ethnic origin, politics, religion, orientation, genetic, biometric, and SIN as almost always sensitive. SIN must only be collected where legally required."
         }
     };
 
@@ -270,7 +278,7 @@
         { id: "name_suffix", name: "name_suffix", tier: 3, isSPI: false, category: "Personal Details", regs: ["Generalized"], harm: "None", aliases: ["suffix", "name_suffix", "jr_sr_iii"] },
         { id: "preferred_name", name: "preferred_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification", aliases: ["nickname", "preferred", "alias_name"] },
         { id: "phone_alt", name: "alternate_phone", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Re-Contact", aliases: ["mobile_alt", "secondary_phone", "work_phone", "home_phone"] },
-        { id: "maiden_name", name: "mothers_maiden_name", tier: 1, isSPI: true, category: "Personal Details", regs: ["KBA Secret"], harm: "Auth Bypass", aliases: ["maiden_name", "mothers_maiden", "birth_surname"], remediation: "Commonly used as KBA secret. Treat as a credential, never as plain metadata." },
+        { id: "maiden_name", name: "mothers_maiden_name", tier: 2, isSPI: true, category: "Personal Details", regs: ["KBA Secret"], harm: "Auth Bypass", aliases: ["maiden_name", "mothers_maiden", "birth_surname"], remediation: "It is a KBA credential secret, not a unique identifier. Hash/tokenize and treat as a credential. Never use as a business-logic identifier." },
         { id: "email", name: "email_address", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Phishing", aliases: ["email", "mail", "e_mail"] },
         { id: "username", name: "login_username", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Account Targeting", aliases: ["username", "login", "user_name", "handle", "screen_name"] },
         { id: "phone", name: "phone_number", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Smishing", aliases: ["phone", "mobile", "tel", "telephone", "msisdn"] },
@@ -280,7 +288,8 @@
 
         // ---------- Government IDs ----------
         { id: "ssn", name: "social_security_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI / CCPA"], harm: "Identity Theft", aliases: ["ssn", "social_security"] },
-        { id: "national_id", name: "national_id_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Identity Theft", aliases: ["nin", "nric", "aadhaar", "rg_number", "dni", "national_identity_number", "id_number", "curp"], remediation: "Country-level direct ID. Mask to last 4 in non-privileged views." },
+        { id: "sin", name: "social_insurance_number_ca", tier: 1, isSPI: true, category: "Government IDs", regs: ["PIPEDA"], harm: "Identity Theft", aliases: ["sin", "sin_ca", "social_insurance_number", "nas", "numero_assurance_sociale"], remediation: "OPC guidance: collect only where legally required (tax reporting, credit reporting, pension). Never use as a general customer identifier." },
+        { id: "national_id", name: "national_id_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Identity Theft", aliases: ["nin", "nric", "aadhaar", "rg_number", "dni", "national_identity_number", "id_number", "curp", "rfc", "cpf"], remediation: "Country-level direct ID. Mask to last 4 in non-privileged views." },
         { id: "passport", name: "passport_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI / CCPA"], harm: "Fraud", aliases: ["passport", "passport_no"] },
         { id: "drivers_license", name: "drivers_license_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI / CCPA"], harm: "Identity Theft", aliases: ["dl", "drivers_license", "driving_license", "license_number"] },
         { id: "tin", name: "tax_id_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI / CCPA"], harm: "Tax Fraud", aliases: ["tin", "tax_id", "ein", "itin", "vat_number", "fiscal_code", "tax_residency"] },
@@ -300,7 +309,7 @@
         { id: "account_open_date", name: "account_open_date", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Tenure Linkage", aliases: ["open_date", "onboarding_date", "account_creation_date"] },
         { id: "account_type", name: "account_type", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Profiling", aliases: ["product_type", "acct_type", "checking_savings"] },
         { id: "product_holdings", name: "product_holdings", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Profiling", aliases: ["products", "held_products", "product_set"] },
-        { id: "balance_band", name: "account_balance_band", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Wealth Profiling", aliases: ["balance_tier", "balance_range", "balance_bucket"], remediation: "Bucketed balances are still quasi-identifying when joined with city or branch." },
+        { id: "balance_band", name: "account_balance_band", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Wealth Profiling", aliases: ["balance_tier", "balance_range", "balance_bucket"], remediation: "Bucketed balances are still quasi-identifying when joined with city or branch. Under PIPEDA, financial information is almost always sensitive per OPC guidance (Principle 4.3.6)." },
         { id: "txn_amount", name: "transaction_amount", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Behavioral Profiling", aliases: ["amount", "txn_amt", "value", "debit_amount", "credit_amount"] },
         { id: "txn_currency", name: "transaction_currency", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Profiling", aliases: ["currency", "ccy", "iso_currency"] },
         { id: "txn_country", name: "transaction_country", tier: 2, isSPI: false, category: "Financial", regs: ["Quasi"], harm: "Cross-Border Profiling", aliases: ["txn_country", "merchant_country", "pos_country"] },
@@ -317,7 +326,7 @@
 
         // ---------- Credit & Risk (FCRA) ----------
         { id: "credit_score", name: "credit_score", tier: 2, isSPI: true, category: "Credit & Risk", regs: ["FCRA / SPI"], harm: "Discrimination", aliases: ["fico", "credit_rating", "vantage_score"] },
-        { id: "income", name: "annual_income", tier: 2, isSPI: true, category: "Credit & Risk", regs: ["SPI"], harm: "Profiling", aliases: ["salary", "income", "gross_income", "household_income"] },
+        { id: "income", name: "annual_income", tier: 2, isSPI: true, category: "Credit & Risk", regs: ["SPI"], harm: "Profiling", aliases: ["salary", "income", "gross_income", "household_income"], remediation: "Financial information is almost always sensitive under PIPEDA (OPC Principle 4.3.6). Treat with explicit consent and purpose limitation." },
         { id: "debt_ratio", name: "debt_to_income_ratio", tier: 2, isSPI: true, category: "Credit & Risk", regs: ["SPI"], harm: "Profiling", aliases: ["dti"] },
         { id: "bankruptcy", name: "bankruptcy_or_default", tier: 2, isSPI: true, category: "Credit & Risk", regs: ["FCRA / SPI"], harm: "Discrimination", aliases: ["bankruptcy", "default_record", "delinquency", "ch7_ch13"] },
 
