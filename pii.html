@@ -110,6 +110,19 @@
         .citation-box { background: #f8fafc; border-left: 4px solid #4f46e5; padding: 15px; margin-top: 20px; font-size: 0.85rem; color: #334155; }
         .visual-diagram { background: #e0e7ff; padding: 15px; border-radius: 6px; margin: 15px 0; font-family: monospace; font-size: 0.85rem; text-align: center; border: 1px dashed #818cf8; }
 
+        /* Settings pill in the header */
+        .settings-pill { cursor: pointer; transition: background 0.15s; }
+        .settings-pill:hover { background: rgba(255,255,255,0.18); }
+        .settings-pill:focus { outline: 2px solid #93c5fd; outline-offset: 2px; }
+
+        /* Settings modal form */
+        .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e2e8f0; }
+        .settings-row:last-of-type { border-bottom: none; }
+        .settings-row label { font-weight: 600; color: #334155; font-size: 0.85rem; flex: 1; }
+        .settings-row input, .settings-row select { padding: 7px 9px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.85rem; min-width: 180px; font-family: inherit; }
+        .settings-preview { background: #f0f9ff; border: 1px solid #7dd3fc; border-radius: 6px; padding: 12px 14px; margin-top: 16px; font-size: 0.85rem; color: #075985; line-height: 1.5; }
+        .settings-preview strong { color: #0c4a6e; font-size: 1.1rem; }
+
         @keyframes slideIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
     </style>
 </head>
@@ -128,12 +141,10 @@
                     <option value="pipeda">PIPEDA (Canada)</option>
                 </select>
             </div>
-            <div class="control-group">
-                <label>Dataset Size:</label>
-                <select id="dataset-size" onchange="evaluateSchema()">
-                    <option value="large">Large (> 1,000 rows)</option>
-                    <option value="small">Small (< 1,000 rows)</option>
-                </select>
+            <div class="control-group settings-pill" role="button" tabindex="0" onclick="openSettingsModal()" title="Click to change dataset size, k-anonymity target, and presets">
+                <label>Dataset:</label>
+                <span id="settings-summary" style="color: white; font-weight: 600;">10M rows · k=5</span>
+                <span aria-hidden="true" style="margin-left: 6px; opacity: 0.8;">⚙</span>
             </div>
             <button class="btn btn-science" onclick="openScienceModal()" aria-label="Science of Re-identification">🧠 Science of Re-ID</button>
             <button class="btn btn-outline" onclick="openImportModal()" aria-label="Import schema">📥 Import</button>
@@ -222,8 +233,120 @@
         </div>
     </div>
 
+    <div id="settingsModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+        <div class="modal-content" style="max-width: 560px;">
+            <span class="close-btn" role="button" tabindex="0" aria-label="Close" onclick="closeSettingsModal()">&times;</span>
+            <h3 id="settingsModalTitle">Classifier Settings</h3>
+            <p style="font-size: 0.85rem; color: #64748b; margin-top: 0;">These values drive the Mosaic Effect threshold — the minimum number of quasi-identifiers that make re-identification likely at this dataset scale.</p>
+
+            <div class="settings-row">
+                <label for="setting-preset">Use-case preset</label>
+                <select id="setting-preset" onchange="onPresetChange()">
+                    <option value="enterprise">Enterprise Bank (10M rows)</option>
+                    <option value="regional">Regional Bank (500K rows)</option>
+                    <option value="community">Community Bank (25K rows)</option>
+                    <option value="fintech">Fintech Startup (5K rows)</option>
+                    <option value="pilot">Department / Pilot (500 rows)</option>
+                    <option value="census">Global / Census (300M rows)</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </div>
+            <div class="settings-row">
+                <label for="setting-rows">Row count (N)</label>
+                <input type="number" id="setting-rows" min="2" step="1" oninput="onSettingsInput()" />
+            </div>
+            <div class="settings-row">
+                <label for="setting-k">k-anonymity target (k)</label>
+                <select id="setting-k" onchange="onSettingsInput()">
+                    <option value="2">k=2 (weak — just not unique)</option>
+                    <option value="5">k=5 (moderate privacy)</option>
+                    <option value="10">k=10 (strong privacy)</option>
+                    <option value="25">k=25 (very strong)</option>
+                </select>
+            </div>
+            <div class="settings-row">
+                <label for="setting-bits">Bits per quasi-identifier (advanced)</label>
+                <input type="number" id="setting-bits" min="1" max="32" step="1" oninput="onSettingsInput()" />
+            </div>
+
+            <div class="settings-preview" id="setting-preview"></div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px;">
+                <button class="btn btn-outline" style="color: #64748b; border-color: #cbd5e1;" onclick="closeSettingsModal()">Cancel</button>
+                <button class="btn btn-action" onclick="applySettings()">Apply</button>
+            </div>
+        </div>
+    </div>
+
 <script>
-    // --- 0. Sensitivity Tag Vocabulary ---
+    // --- 0. Classifier Settings ---
+    // Drive the Mosaic Effect threshold from a real row count and a
+    // k-anonymity target instead of a fixed Small/Large toggle. The
+    // threshold represents the minimum number of quasi-identifiers
+    // required to likely re-identify an individual at the given
+    // dataset scale and privacy posture.
+    //
+    // Math: total entropy needed to single someone out is log2(N) + log2(k).
+    // If each quasi carries ~bitsPerQuasi bits of entropy on average
+    // (Sweeney: ~11 bits for ZIP/DOB/gender-class demographics), then
+    // the minimum Q is ceil((log2(N) + log2(k)) / bitsPerQuasi). We
+    // clamp to >= 2 so a schema with a single quasi-identifier is
+    // never auto-flagged by the Mosaic path alone.
+    const SETTINGS_PRESETS = {
+        enterprise: { label: "Enterprise Bank",     rowCount: 10000000,  k: 5, bitsPerQuasi: 11 },
+        regional:   { label: "Regional Bank",       rowCount: 500000,    k: 5, bitsPerQuasi: 11 },
+        community:  { label: "Community Bank",      rowCount: 25000,     k: 5, bitsPerQuasi: 11 },
+        fintech:    { label: "Fintech Startup",     rowCount: 5000,      k: 5, bitsPerQuasi: 11 },
+        pilot:      { label: "Department / Pilot",  rowCount: 500,       k: 5, bitsPerQuasi: 11 },
+        census:     { label: "Global / Census",     rowCount: 300000000, k: 5, bitsPerQuasi: 11 }
+    };
+    const DEFAULT_PRESET = 'enterprise';
+
+    let appSettings = {
+        preset: DEFAULT_PRESET,
+        rowCount:     SETTINGS_PRESETS[DEFAULT_PRESET].rowCount,
+        k:            SETTINGS_PRESETS[DEFAULT_PRESET].k,
+        bitsPerQuasi: SETTINGS_PRESETS[DEFAULT_PRESET].bitsPerQuasi
+    };
+
+    function computeMosaicThreshold(s) {
+        const N    = Math.max(2, Number(s.rowCount)     || 1000);
+        const k    = Math.max(2, Number(s.k)            || 5);
+        const bits = Math.max(1, Number(s.bitsPerQuasi) || 11);
+        const entropyNeeded = Math.log2(N) + Math.log2(k);
+        return Math.max(2, Math.ceil(entropyNeeded / bits));
+    }
+
+    function formatRowCount(n) {
+        n = Number(n) || 0;
+        if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+        if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+        if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+        return String(n);
+    }
+
+    function loadSettings() {
+        try {
+            const raw = localStorage.getItem('piiSettings');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object') {
+                    appSettings = Object.assign({}, appSettings, parsed);
+                }
+            }
+        } catch (_) { /* ignore corrupted settings */ }
+    }
+    function saveSettings() {
+        try { localStorage.setItem('piiSettings', JSON.stringify(appSettings)); } catch (_) {}
+    }
+
+    function updateSettingsSummary() {
+        const sum = document.getElementById('settings-summary');
+        if (!sum) return;
+        sum.innerText = `${formatRowCount(appSettings.rowCount)} rows · k=${appSettings.k}`;
+    }
+
+    // --- 0a. Sensitivity Tag Vocabulary ---
     // Each inventory item can declare an explicit `sensitivityTags: [...]`
     // array drawn from this vocabulary. Each jurisdiction declares which
     // tags elevate an item to SPI via its own `triggerTags` list.
@@ -259,7 +382,7 @@
         return item.isSPI ? ["legacy_spi"] : [];
     }
 
-    // --- 0a. Jurisdiction Rules ---
+    // --- 0b. Jurisdiction Rules ---
     // mosaicAdjust shifts the quasi-identifier threshold. triggerTags is
     // the set of sensitivity tags that elevate an item to SPI under this
     // jurisdiction. healthSafeHarbor=true means any health item is SPI
@@ -544,8 +667,7 @@
     function evaluateSchema() {
         const jurKey = document.getElementById('jurisdiction').value;
         const rules = jurisdictionRules[jurKey] || jurisdictionRules.global;
-        const size = document.getElementById('dataset-size').value;
-        const baseThreshold = (size === 'small') ? 2 : 3;
+        const baseThreshold = computeMosaicThreshold(appSettings);
         const effectiveThreshold = baseThreshold + (rules.mosaicAdjust || 0);
 
         const triggerSet = new Set(rules.triggerTags || []);
@@ -778,9 +900,66 @@
 
     function openImportModal() { document.getElementById("importModal").style.display = "block"; }
     function closeImportModal() { document.getElementById("importModal").style.display = "none"; document.getElementById('importText').value = ''; }
-    
+
     function openScienceModal() { document.getElementById("scienceModal").style.display = "block"; }
     function closeScienceModal() { document.getElementById("scienceModal").style.display = "none"; }
+
+    // Settings modal
+    function openSettingsModal() {
+        document.getElementById('setting-preset').value = appSettings.preset || 'custom';
+        document.getElementById('setting-rows').value   = appSettings.rowCount;
+        document.getElementById('setting-k').value      = String(appSettings.k);
+        document.getElementById('setting-bits').value   = appSettings.bitsPerQuasi;
+        recomputeSettingsPreview();
+        document.getElementById('settingsModal').style.display = 'block';
+    }
+    function closeSettingsModal() { document.getElementById('settingsModal').style.display = 'none'; }
+
+    function onPresetChange() {
+        const v = document.getElementById('setting-preset').value;
+        if (v && v !== 'custom' && SETTINGS_PRESETS[v]) {
+            const p = SETTINGS_PRESETS[v];
+            document.getElementById('setting-rows').value = p.rowCount;
+            document.getElementById('setting-k').value    = String(p.k);
+            document.getElementById('setting-bits').value = p.bitsPerQuasi;
+        }
+        recomputeSettingsPreview();
+    }
+
+    function onSettingsInput() {
+        // Any manual input switches the preset to "custom" so the label is honest.
+        document.getElementById('setting-preset').value = 'custom';
+        recomputeSettingsPreview();
+    }
+
+    function recomputeSettingsPreview() {
+        const rows = parseInt(document.getElementById('setting-rows').value, 10) || 1000;
+        const k    = parseInt(document.getElementById('setting-k').value, 10)    || 5;
+        const bits = parseInt(document.getElementById('setting-bits').value, 10) || 11;
+        const threshold = computeMosaicThreshold({ rowCount: rows, k, bitsPerQuasi: bits });
+        const entropy = (Math.log2(rows) + Math.log2(k)).toFixed(1);
+        document.getElementById('setting-preview').innerHTML =
+            `Computed Mosaic threshold: <strong>${threshold}</strong> quasi-identifiers<br>` +
+            `<span style="color:#0369a1; font-size:0.78rem;">` +
+            `log&#8322;(${rows.toLocaleString()}) + log&#8322;(k=${k}) = ${entropy} bits of entropy needed &middot; ` +
+            `&#8776;${bits} bits per quasi &#8594; ceil(${entropy}/${bits}) = <strong>${threshold}</strong>` +
+            `</span>`;
+    }
+
+    function applySettings() {
+        const rows = parseInt(document.getElementById('setting-rows').value, 10);
+        const k    = parseInt(document.getElementById('setting-k').value, 10);
+        const bits = parseInt(document.getElementById('setting-bits').value, 10);
+        const preset = document.getElementById('setting-preset').value;
+        if (isNaN(rows) || rows < 2) { alert('Row count must be at least 2.'); return; }
+        if (isNaN(k) || k < 2)       { alert('k-anonymity target must be at least 2.'); return; }
+        if (isNaN(bits) || bits < 1) { alert('Bits per quasi-identifier must be at least 1.'); return; }
+        appSettings = { preset, rowCount: rows, k, bitsPerQuasi: bits };
+        saveSettings();
+        updateSettingsSummary();
+        closeSettingsModal();
+        evaluateSchema();
+    }
     
     function processImport() {
         const text = document.getElementById('importText').value || "";
@@ -819,8 +998,10 @@
         lines.push("=".repeat(40));
         lines.push(`Generated:    ${new Date().toISOString()}`);
         lines.push(`Jurisdiction: ${ev.rules.label}`);
-        lines.push(`Dataset size: ${document.getElementById('dataset-size').value}`);
-        lines.push(`Threshold:    ${ev.threshold} quasi-identifiers (base ${ev.baseThreshold})`);
+        lines.push(`Dataset:      ${appSettings.rowCount.toLocaleString()} rows (${formatRowCount(appSettings.rowCount)})`);
+        lines.push(`Preset:       ${SETTINGS_PRESETS[appSettings.preset] ? SETTINGS_PRESETS[appSettings.preset].label : 'Custom'}`);
+        lines.push(`k-anonymity:  k=${appSettings.k}    bits/quasi: ~${appSettings.bitsPerQuasi}`);
+        lines.push(`Threshold:    ${ev.threshold} quasi-identifiers (base ${ev.baseThreshold}, jurisdiction adjust ${ev.threshold - ev.baseThreshold >= 0 ? '+' : ''}${ev.threshold - ev.baseThreshold})`);
         lines.push(`Verdict:      ${verdict}`);
         lines.push("");
 
@@ -911,6 +1092,7 @@
         if (e.key === 'Escape') {
             closeImportModal();
             closeScienceModal();
+            closeSettingsModal();
         }
     });
 
@@ -921,7 +1103,9 @@
         });
     });
 
+    loadSettings();
     init();
+    updateSettingsSummary();
     evaluateSchema();
 </script>
 
