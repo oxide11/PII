@@ -112,10 +112,10 @@
                     <option value="small">Small (< 1,000 rows)</option>
                 </select>
             </div>
-            <button class="btn btn-science" onclick="openScienceModal()">🧠 Science of Re-ID</button>
-            <button class="btn btn-outline" onclick="openImportModal()">📥 Import</button>
-            <button class="btn btn-action" onclick="exportReceipt()">📄 Report</button>
-            <button class="btn btn-outline" onclick="resetDashboard()">↺ Clear</button>
+            <button class="btn btn-science" onclick="openScienceModal()" aria-label="Science of Re-identification">🧠 Science of Re-ID</button>
+            <button class="btn btn-outline" onclick="openImportModal()" aria-label="Import schema">📥 Import</button>
+            <button class="btn btn-action" onclick="exportReceipt()" aria-label="Export DPIA report">📄 Report</button>
+            <button class="btn btn-outline" onclick="resetDashboard()" aria-label="Clear schema">↺ Clear</button>
         </div>
     </header>
 
@@ -153,22 +153,22 @@
         </div>
     </div>
 
-    <div id="importModal" class="modal">
+    <div id="importModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
         <div class="modal-content" style="width: 400px; margin: 10% auto;">
-            <span class="close-btn" onclick="closeImportModal()">&times;</span>
-            <h3 style="margin-top:0;">Import Schema</h3>
-            <p style="font-size: 0.85rem; color: #64748b;">Paste comma-separated column names.</p>
-            <textarea id="importText" style="width:100%; height:100px; padding:10px; box-sizing:border-box;" placeholder="e.g., employee_number, first_name, zip_code"></textarea>
+            <span class="close-btn" role="button" tabindex="0" aria-label="Close" onclick="closeImportModal()">&times;</span>
+            <h3 id="importModalTitle" style="margin-top:0;">Import Schema</h3>
+            <label for="importText" style="font-size: 0.85rem; color: #64748b;">Paste comma-separated column names.</label>
+            <textarea id="importText" style="width:100%; height:100px; padding:10px; box-sizing:border-box; margin-top:6px;" placeholder="e.g., employee_number, first_name, zip_code"></textarea>
             <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:15px;">
                 <button class="btn btn-action" onclick="processImport()">Auto-Map</button>
             </div>
         </div>
     </div>
 
-    <div id="scienceModal" class="modal">
+    <div id="scienceModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="scienceModalTitle">
         <div class="modal-content">
-            <span class="close-btn" onclick="closeScienceModal()">&times;</span>
-            <h3>The Science of Re-identification</h3>
+            <span class="close-btn" role="button" tabindex="0" aria-label="Close" onclick="closeScienceModal()">&times;</span>
+            <h3 id="scienceModalTitle">The Science of Re-identification</h3>
             
             <p>Why does combining seemingly safe data (like a ZIP code and Gender) trigger a strict PI violation? The answer lies in <strong>Linkage Attacks</strong> and the mathematical concept of <em>k-anonymity</em>.</p>
             
@@ -197,48 +197,107 @@
     </div>
 
 <script>
+    // --- 0. Jurisdiction Rules ---
+    // Each jurisdiction adjusts the classification logic. mosaicAdjust shifts
+    // the quasi-identifier threshold; spiAlwaysRestricted forces PI when any
+    // sensitive item is present; healthSafeHarbor=true means any health item
+    // is treated as restricted on its own.
+    const jurisdictionRules = {
+        global: {
+            label: "Global (Strictest)",
+            spiAlwaysRestricted: true,
+            mosaicAdjust: 0,
+            healthSafeHarbor: true,
+            note: "Applies the union of GDPR, CCPA, and HIPAA. SPI and any health identifier are always restricted."
+        },
+        gdpr: {
+            label: "GDPR (EU)",
+            spiAlwaysRestricted: true,
+            mosaicAdjust: 0,
+            healthSafeHarbor: false,
+            note: "Article 9 special-category data is always restricted. Pseudonymized data remains personal data (Recital 26)."
+        },
+        ccpa: {
+            label: "CCPA (California)",
+            spiAlwaysRestricted: true,
+            mosaicAdjust: 1,
+            healthSafeHarbor: false,
+            note: "Sensitive Personal Information triggers consumer rights. Higher quasi-identifier threshold reflects CCPA's narrower deidentification standard."
+        },
+        hipaa: {
+            label: "HIPAA (US Health)",
+            spiAlwaysRestricted: true,
+            mosaicAdjust: 0,
+            healthSafeHarbor: true,
+            note: "Any of the HIPAA Safe Harbor identifiers in combination with health data is PHI and restricted."
+        }
+    };
+
+    // Categories considered "health" for HIPAA Safe Harbor logic.
+    const HEALTH_CATEGORY = "Health & Biometric";
+
+    // Normalize a free-form column name to a comparable token.
+    function normalizeToken(s) {
+        return (s || "")
+            .toLowerCase()
+            .trim()
+            .replace(/[\s\-./]+/g, '_')
+            .replace(/[^a-z0-9_]/g, '');
+    }
+
     // --- 1. The Exhaustive Data Inventory ---
     const dataInventory = [
         // System & Internal
-        { id: "uuid", name: "user_uuid / account_id", tier: 1, isSPI: false, category: "System & Internal", regs: ["Pseudonymized PI"], harm: "Tracking", remediation: "Ensure strict RBAC. Pseudonymized data remains PI." },
-        
+        { id: "uuid", name: "user_uuid / account_id", tier: 1, isSPI: false, category: "System & Internal", regs: ["Pseudonymized PI"], harm: "Tracking", aliases: ["user_uuid", "account_id", "uuid", "user_id", "userid"], remediation: "Ensure strict RBAC. Pseudonymized data remains PI." },
+
         // Names & Contact
-        { id: "first_name", name: "first_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification" },
-        { id: "last_name", name: "last_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification" },
-        { id: "email", name: "email_address", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Phishing" },
-        { id: "phone", name: "phone_number", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Smishing" },
-        
+        { id: "first_name", name: "first_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification", aliases: ["fname", "firstname", "given_name"] },
+        { id: "last_name", name: "last_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification", aliases: ["lname", "lastname", "surname", "family_name"] },
+        { id: "email", name: "email_address", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Phishing", aliases: ["email", "mail", "e_mail"] },
+        { id: "phone", name: "phone_number", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Smishing", aliases: ["phone", "mobile", "tel", "telephone"] },
+
         // Government IDs
-        { id: "ssn", name: "social_security_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Identity Theft" },
-        { id: "passport", name: "passport_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Fraud" },
+        { id: "ssn", name: "social_security_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Identity Theft", aliases: ["ssn", "social_security"] },
+        { id: "passport", name: "passport_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Fraud", aliases: ["passport"] },
 
         // Financial
-        { id: "credit_card", name: "credit_card_number", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SPI"], harm: "Financial Fraud", remediation: "Tokenize or hash if full PAN is not required." },
+        { id: "credit_card", name: "credit_card_number", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SPI"], harm: "Financial Fraud", aliases: ["cc", "card_number", "pan", "credit_card"], remediation: "Tokenize or hash if full PAN is not required." },
 
         // Location
-        { id: "address", name: "street_address", tier: 1, isSPI: false, category: "Location", regs: ["Direct ID"], harm: "Stalking", remediation: "Truncate to ZIP or City to anonymize." },
-        { id: "gps", name: "precise_geolocation", tier: 1, isSPI: true, category: "Location", regs: ["SPI"], harm: "Physical Tracking", remediation: "Downgrade coordinates to generic region bounds." },
-        { id: "zip_code", name: "zip_code_5", tier: 2, isSPI: false, category: "Location", regs: ["Quasi"], harm: "Targeting" },
-        { id: "state", name: "state_province", tier: 3, isSPI: false, category: "Location", regs: ["Generalized"], harm: "None" },
+        { id: "address", name: "street_address", tier: 1, isSPI: false, category: "Location", regs: ["Direct ID"], harm: "Stalking", aliases: ["address", "street", "address_line_1"], remediation: "Truncate to ZIP or City to anonymize." },
+        { id: "gps", name: "precise_geolocation", tier: 1, isSPI: true, category: "Location", regs: ["SPI"], harm: "Physical Tracking", aliases: ["gps", "lat_long", "latitude", "longitude", "coordinates"], remediation: "Downgrade coordinates to generic region bounds." },
+        { id: "zip_code", name: "zip_code_5", tier: 2, isSPI: false, category: "Location", regs: ["Quasi"], harm: "Targeting", aliases: ["zip", "zipcode", "zip_code", "postal_code", "postcode"] },
+        { id: "state", name: "state_province", tier: 3, isSPI: false, category: "Location", regs: ["Generalized"], harm: "None", aliases: ["state", "province", "region"] },
 
         // Demographics
-        { id: "dob", name: "date_of_birth", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Auth Bypass", remediation: "Downgrade to 'Year of Birth' to break Mosaic Effect." },
-        { id: "dob_year", name: "birth_year", tier: 3, isSPI: false, category: "Demographics", regs: ["Generalized"], harm: "None" },
-        { id: "gender", name: "gender", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Profiling" },
-        { id: "race", name: "race_ethnicity", tier: 2, isSPI: true, category: "Demographics", regs: ["SPI"], harm: "Discrimination" },
+        { id: "dob", name: "date_of_birth", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Auth Bypass", aliases: ["dob", "birthdate", "birth_date", "date_of_birth"], remediation: "Downgrade to 'Year of Birth' to break Mosaic Effect." },
+        { id: "dob_year", name: "birth_year", tier: 3, isSPI: false, category: "Demographics", regs: ["Generalized"], harm: "None", aliases: ["birth_year", "yob", "year_of_birth"] },
+        { id: "gender", name: "gender", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Profiling", aliases: ["sex"] },
+        { id: "race", name: "race_ethnicity", tier: 2, isSPI: true, category: "Demographics", regs: ["SPI"], harm: "Discrimination", aliases: ["race", "ethnicity"] },
 
         // Health & Biometric
-        { id: "mrn", name: "medical_record_no", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["SPI / HIPAA"], harm: "Medical ID Theft" },
-        { id: "diagnosis", name: "specific_diagnosis", tier: 2, isSPI: true, category: "Health & Biometric", regs: ["SPI"], harm: "Stigma" },
-        { id: "biometric", name: "biometric_hash", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["SPI"], harm: "Irrevocable Compromise", remediation: "Highest encryption required." },
+        { id: "mrn", name: "medical_record_no", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["SPI / HIPAA"], harm: "Medical ID Theft", aliases: ["mrn", "medical_record_number", "patient_id"] },
+        { id: "diagnosis", name: "specific_diagnosis", tier: 2, isSPI: true, category: "Health & Biometric", regs: ["SPI"], harm: "Stigma", aliases: ["diagnosis", "icd10", "condition"] },
+        { id: "biometric", name: "biometric_hash", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["SPI"], harm: "Irrevocable Compromise", aliases: ["biometric", "fingerprint", "face_template"], remediation: "Highest encryption required." },
 
         // Digital & Security
-        { id: "ip_address", name: "ip_address", tier: 1, isSPI: false, category: "Digital & Security", regs: ["Direct ID"], harm: "Cyber Profiling" },
-        { id: "password", name: "password_hash", tier: 1, isSPI: true, category: "Digital & Security", regs: ["Security"], harm: "Account Takeover", remediation: "Ensure strong salting/hashing algorithms." }
+        { id: "ip_address", name: "ip_address", tier: 1, isSPI: false, category: "Digital & Security", regs: ["Direct ID"], harm: "Cyber Profiling", aliases: ["ip", "ipaddress", "remote_addr"] },
+        { id: "password", name: "password_hash", tier: 1, isSPI: true, category: "Digital & Security", regs: ["Security"], harm: "Account Takeover", aliases: ["password", "pwd", "pass_hash"], remediation: "Ensure strong salting/hashing algorithms." }
     ];
 
+    // Build a normalized lookup map: token -> inventory id.
+    const importLookup = new Map();
+    dataInventory.forEach(item => {
+        const keys = new Set([
+            normalizeToken(item.id),
+            normalizeToken(item.name),
+            ...((item.aliases || []).map(normalizeToken))
+        ]);
+        keys.forEach(k => { if (k) importLookup.set(k, item.id); });
+    });
+
     let selectedIds = new Set();
-    let currentLogData = ""; 
+    let lastEvaluation = null;
 
     function init() {
         const library = document.getElementById('library-pane');
@@ -255,8 +314,10 @@
                 btn.id = `btn-${item.id}`;
                 btn.onclick = () => toggleElement(item.id);
                 
-                let badgeClass = item.isSPI ? "badge-spi" : item.tier === 1 ? "badge-tier1" : "badge";
-                
+                const badgeClass = item.isSPI ? "badge-spi" : item.tier === 1 ? "badge-tier1" : "";
+                btn.setAttribute('aria-pressed', 'false');
+                btn.setAttribute('type', 'button');
+
                 btn.innerHTML = `
                     <div class="btn-header">
                         <span class="btn-name">${item.name}</span>
@@ -276,30 +337,42 @@
     }
 
     function evaluateSchema() {
-        const jur = document.getElementById('jurisdiction').value;
+        const jurKey = document.getElementById('jurisdiction').value;
+        const rules = jurisdictionRules[jurKey] || jurisdictionRules.global;
         const size = document.getElementById('dataset-size').value;
-        const mosaicThreshold = (size === 'small') ? 2 : 3;
+        const baseThreshold = (size === 'small') ? 2 : 3;
+        const effectiveThreshold = baseThreshold + (rules.mosaicAdjust || 0);
 
         let directNodes = [];
         let quasiNodes = [];
         let spiNodes = [];
+        let healthNodes = [];
         let remediations = [];
-        
-        let hasFirst = selectedIds.has("first_name");
-        let hasLast = selectedIds.has("last_name");
-        let fullNameTriggered = false;
+
+        const hasFirst = selectedIds.has("first_name");
+        const hasLast = selectedIds.has("last_name");
+        let fullNameAdded = false;
 
         selectedIds.forEach(id => {
             const item = dataInventory.find(i => i.id === id);
-            
+            if (!item) return;
+
             if (item.isSPI) spiNodes.push(item);
+            if (item.category === HEALTH_CATEGORY) healthNodes.push(item);
             if (item.remediation) remediations.push({ name: item.name, text: item.remediation });
-            
+
             if (id === "first_name" || id === "last_name") {
+                // first+last together are treated as a single strong quasi-identifier
+                // (a full name alone is rarely a "direct" ID under GDPR without context).
                 if (hasFirst && hasLast) {
-                    if (!fullNameTriggered) {
-                        directNodes.push({ name: "Compound Full Name (first_name + last_name)" });
-                        fullNameTriggered = true;
+                    if (!fullNameAdded) {
+                        quasiNodes.push({
+                            id: "__fullname__",
+                            name: "Compound Full Name (first_name + last_name)",
+                            tier: 2,
+                            isSPI: false
+                        });
+                        fullNameAdded = true;
                     }
                 } else {
                     quasiNodes.push(item);
@@ -312,14 +385,26 @@
 
         updateLibraryUI();
         updateCollectionUI();
-        updateVerdict(directNodes, quasiNodes, spiNodes, remediations, mosaicThreshold, jur);
+        updateVerdict({
+            direct: directNodes,
+            quasi: quasiNodes,
+            spi: spiNodes,
+            health: healthNodes,
+            rems: remediations,
+            threshold: effectiveThreshold,
+            baseThreshold,
+            rules,
+            jurKey
+        });
     }
 
     function updateLibraryUI() {
         dataInventory.forEach(item => {
             const btn = document.getElementById(`btn-${item.id}`);
-            if (selectedIds.has(item.id)) btn.classList.add('selected');
-            else btn.classList.remove('selected');
+            if (!btn) return;
+            const selected = selectedIds.has(item.id);
+            btn.classList.toggle('selected', selected);
+            btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
         });
     }
 
@@ -343,57 +428,83 @@
         });
     }
 
-    function updateVerdict(direct, quasi, spi, rems, mosaicThreshold, jur) {
+    function updateVerdict(ctx) {
+        const { direct, quasi, spi, health, rems, threshold, baseThreshold, rules, jurKey } = ctx;
         const banner = document.getElementById('status-banner');
         const log = document.getElementById('audit-log');
         const remBox = document.getElementById('remediation-box');
         const remContent = document.getElementById('remediation-content');
-        
+
+        // Decide PI status. Multiple independent triggers.
+        const triggers = [];
+        if (direct.length > 0) {
+            triggers.push({ key: 'direct', label: 'Direct identifier present' });
+        }
+        if (quasi.length >= threshold) {
+            triggers.push({ key: 'mosaic', label: `Mosaic Effect (≥${threshold} quasi-identifiers)` });
+        }
+        if (rules.spiAlwaysRestricted && spi.length > 0) {
+            triggers.push({ key: 'spi', label: 'Sensitive PI (SPI) present' });
+        }
+        if (rules.healthSafeHarbor && health.length > 0) {
+            triggers.push({ key: 'health', label: 'Health/biometric data present' });
+        }
+
+        const isPI = triggers.length > 0;
         let logsHTML = "";
-        let isPI = false;
-        
-        if (direct.length > 0 || quasi.length >= mosaicThreshold) isPI = true;
 
         if (isPI) {
             banner.className = 'status-banner status-pi';
             banner.innerText = 'CLASSIFICATION: PI / RESTRICTED';
 
-            logsHTML += `<div class="log-entry"><span class="alert-text">Schema Classified as Personal Information.</span> Data subject to compliance frameworks under <strong>${jur.toUpperCase()}</strong> rules.</div>`;
-            
+            logsHTML += `<div class="log-entry"><span class="alert-text">Schema Classified as Personal Information.</span> Subject to <strong>${rules.label}</strong>.<br><em style="color:#64748b">${rules.note}</em></div>`;
+
+            logsHTML += `<div class="log-entry"><strong>Triggers:</strong><br>${triggers.map(t => `- ${t.label}`).join('<br>')}</div>`;
+
             if (direct.length > 0) {
-                logsHTML += `<div class="log-entry"><strong>Direct Identifiers:</strong><br> ${direct.map(d => `- ${d.name}`).join('<br>')}</div>`;
+                logsHTML += `<div class="log-entry"><strong>Direct Identifiers:</strong><br>${direct.map(d => `- ${d.name}`).join('<br>')}</div>`;
             }
-            if (quasi.length >= mosaicThreshold) {
+            if (quasi.length >= threshold) {
                 logsHTML += `<div class="log-entry" style="background: #fff1f2; border-left: 3px solid #e11d48; padding-left: 10px;">
-                    <strong>Mosaic Effect Triggered:</strong> Threshold (${mosaicThreshold}) exceeded. Schema contains ${quasi.length} quasi-identifiers (${quasi.map(q=>q.name).join(', ')}). 
+                    <strong>Mosaic Effect Triggered:</strong> Threshold (${threshold}) exceeded. Schema contains ${quasi.length} quasi-identifiers (${quasi.map(q => q.name).join(', ')}).
                     <br><br><button class="btn btn-outline" style="color:#e11d48; border-color:#fda4af; padding: 4px 8px; font-size: 0.75rem;" onclick="openScienceModal()">How do these identify someone?</button>
                 </div>`;
+            } else if (quasi.length > 0) {
+                logsHTML += `<div class="log-entry"><em>Quasi-identifiers below threshold (${quasi.length}/${threshold}): ${quasi.map(q => q.name).join(', ')}.</em></div>`;
             }
             if (spi.length > 0) {
-                logsHTML += `<div class="log-entry"><span class="spi-text">Sensitive Data (SPI):</span> ${spi.map(s=>s.name).join(', ')}.</div>`;
+                logsHTML += `<div class="log-entry"><span class="spi-text">Sensitive Data (SPI):</span> ${spi.map(s => s.name).join(', ')}.</div>`;
+            }
+            if (rules.healthSafeHarbor && health.length > 0) {
+                logsHTML += `<div class="log-entry"><span class="spi-text">Health Data (PHI scope):</span> ${health.map(h => h.name).join(', ')}.</div>`;
             }
 
             if (rems.length > 0) {
                 remBox.style.display = 'block';
                 remContent.innerHTML = rems.map(r => `<div class="rem-item"><strong>${r.name}:</strong> ${r.text}</div>`).join('');
-            } else { remBox.style.display = 'none'; }
+            } else {
+                remBox.style.display = 'none';
+            }
 
         } else {
             banner.className = 'status-banner status-nonpi';
             banner.innerText = 'CLASSIFICATION: NON-PI';
             remBox.style.display = 'none';
-            
-            if (selectedIds.size === 0) logsHTML += `<div class="log-entry">Schema is empty.</div>`;
-            else {
-                logsHTML += `<div class="log-entry">Schema does not meet the threshold for PI under <strong>${jur.toUpperCase()}</strong> rules.</div>`;
-                if (quasi.length > 0) logsHTML += `<div class="log-entry"><em>Note: Contains ${quasi.length} quasi-identifiers (${quasi.map(q=>q.name).join(', ')}). Threshold is ${mosaicThreshold}.</em></div>`;
+
+            if (selectedIds.size === 0) {
+                logsHTML += `<div class="log-entry">Schema is empty.</div>`;
+            } else {
+                logsHTML += `<div class="log-entry">Schema does not meet the threshold for PI under <strong>${rules.label}</strong>.<br><em style="color:#64748b">${rules.note}</em></div>`;
+                if (quasi.length > 0) {
+                    logsHTML += `<div class="log-entry"><em>Note: Contains ${quasi.length} quasi-identifier(s) (${quasi.map(q => q.name).join(', ')}). Threshold is ${threshold}.</em></div>`;
+                }
             }
         }
 
         log.innerHTML = logsHTML;
-        
-        currentLogData = `DATA PROTECTION IMPACT ASSESSMENT\nJurisdiction: ${jur.toUpperCase()}\nVerdict: ${isPI ? 'PI DETECTED' : 'NON-PI'}\n\nSCHEMA:\n`;
-        selectedIds.forEach(id => currentLogData += `- ${dataInventory.find(i=>i.id===id).name}\n`);
+
+        // Stash everything needed for the export receipt.
+        lastEvaluation = { direct, quasi, spi, health, rems, threshold, baseThreshold, rules, jurKey, isPI, triggers };
     }
 
     function openImportModal() { document.getElementById("importModal").style.display = "block"; }
@@ -403,22 +514,93 @@
     function closeScienceModal() { document.getElementById("scienceModal").style.display = "none"; }
     
     function processImport() {
-        const text = document.getElementById('importText').value.toLowerCase();
-        selectedIds.clear();
-        const inputTokens = text.split(',').map(s => s.trim().replace(/[^a-z0-9_]/g, ''));
-        
-        dataInventory.forEach(item => {
-            if (inputTokens.includes(item.id) || inputTokens.includes(item.name.toLowerCase())) {
-                selectedIds.add(item.id);
+        const text = document.getElementById('importText').value || "";
+        const tokens = text.split(/[,\n;]+/).map(normalizeToken).filter(Boolean);
+
+        const matched = new Set();
+        const unmatched = [];
+        tokens.forEach(tok => {
+            if (importLookup.has(tok)) {
+                matched.add(importLookup.get(tok));
+            } else {
+                unmatched.push(tok);
             }
         });
+
+        selectedIds = matched;
         closeImportModal();
         evaluateSchema();
+
+        if (tokens.length > 0 && matched.size === 0) {
+            alert(`No columns matched any known data type.\nTried: ${tokens.join(', ')}`);
+        } else if (unmatched.length > 0) {
+            console.info(`Import: ${matched.size} matched, ${unmatched.length} unmatched (${unmatched.join(', ')})`);
+        }
+    }
+
+    function buildReceipt() {
+        const ev = lastEvaluation;
+        if (!ev) return "";
+        const lines = [];
+        lines.push("DATA PROTECTION IMPACT ASSESSMENT");
+        lines.push("=".repeat(40));
+        lines.push(`Generated:    ${new Date().toISOString()}`);
+        lines.push(`Jurisdiction: ${ev.rules.label}`);
+        lines.push(`Dataset size: ${document.getElementById('dataset-size').value}`);
+        lines.push(`Threshold:    ${ev.threshold} quasi-identifiers (base ${ev.baseThreshold})`);
+        lines.push(`Verdict:      ${ev.isPI ? 'PI / RESTRICTED' : 'NON-PI'}`);
+        lines.push("");
+        lines.push("SCHEMA COLUMNS:");
+        if (selectedIds.size === 0) {
+            lines.push("  (none)");
+        } else {
+            selectedIds.forEach(id => {
+                const item = dataInventory.find(i => i.id === id);
+                if (item) lines.push(`  - ${item.name} [tier ${item.tier}${item.isSPI ? ', SPI' : ''}]`);
+            });
+        }
+        lines.push("");
+        if (ev.triggers.length > 0) {
+            lines.push("TRIGGERS:");
+            ev.triggers.forEach(t => lines.push(`  - ${t.label}`));
+            lines.push("");
+        }
+        if (ev.direct.length > 0) {
+            lines.push("DIRECT IDENTIFIERS:");
+            ev.direct.forEach(d => lines.push(`  - ${d.name}`));
+            lines.push("");
+        }
+        if (ev.quasi.length > 0) {
+            lines.push(`QUASI-IDENTIFIERS (${ev.quasi.length}/${ev.threshold}):`);
+            ev.quasi.forEach(q => lines.push(`  - ${q.name}`));
+            lines.push("");
+        }
+        if (ev.spi.length > 0) {
+            lines.push("SENSITIVE PI (SPI):");
+            ev.spi.forEach(s => lines.push(`  - ${s.name}`));
+            lines.push("");
+        }
+        if (ev.health.length > 0) {
+            lines.push("HEALTH / BIOMETRIC:");
+            ev.health.forEach(h => lines.push(`  - ${h.name}`));
+            lines.push("");
+        }
+        if (ev.rems.length > 0) {
+            lines.push("GOVERNANCE RECOMMENDATIONS:");
+            ev.rems.forEach(r => lines.push(`  - ${r.name}: ${r.text}`));
+            lines.push("");
+        }
+        lines.push("JURISDICTION NOTE:");
+        lines.push(`  ${ev.rules.note}`);
+        return lines.join("\n");
     }
 
     function exportReceipt() {
-        if (selectedIds.size === 0) return;
-        const blob = new Blob([currentLogData], { type: 'text/plain' });
+        if (selectedIds.size === 0) {
+            alert("Schema is empty — add at least one column before exporting.");
+            return;
+        }
+        const blob = new Blob([buildReceipt()], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -426,11 +608,28 @@
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     }
 
     function resetDashboard() { selectedIds.clear(); evaluateSchema(); }
 
+    // Close any open modal on Escape key.
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeImportModal();
+            closeScienceModal();
+        }
+    });
+
+    // Close modals when clicking the dimmed backdrop (but not the inner content).
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.style.display = 'none';
+        });
+    });
+
     init();
+    evaluateSchema();
 </script>
 
 </body>
