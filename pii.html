@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Schema Classifier & DPIA Tool</title>
+    <style>
+        :root {
+            --primary: #0f172a;
+            --secondary: #2563eb;
+            --bg-main: #f1f5f9;
+            --bg-pane: #ffffff;
+            --text-dark: #1e293b;
+            --text-light: #64748b;
+            --border: #cbd5e1;
+            --pi-color: #dc2626; 
+            --nonpi-color: #0284c7; 
+            --spi-color: #7e22ce;
+        }
+
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background-color: var(--bg-main); color: var(--text-dark); margin: 0; height: 100vh; display: flex; flex-direction: column; }
+
+        header { background: var(--primary); color: white; padding: 12px 25px; display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid var(--border); z-index: 10; }
+        
+        .header-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .control-group { display: flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.1); padding: 5px 10px; border-radius: 6px; }
+        .control-group label { font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;}
+        .control-group select { background: transparent; color: white; border: none; font-weight: 600; cursor: pointer; outline: none; }
+        .control-group select option { background: #0f172a; color: white; }
+
+        .btn { padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 0.85rem; transition: all 0.2s; border: none; }
+        .btn-action { background-color: var(--secondary); color: white; }
+        .btn-action:hover { background-color: #1d4ed8; }
+        .btn-outline { background-color: transparent; border: 1px solid #64748b; color: white; }
+        .btn-outline:hover { background-color: #334155; }
+        .btn-science { background-color: #4f46e5; color: white; }
+        .btn-science:hover { background-color: #4338ca; }
+        
+        .dashboard { display: flex; flex: 1; overflow: hidden; }
+        .pane { padding: 20px; overflow-y: auto; background: var(--bg-pane); }
+        .left-pane { flex: 0 0 360px; border-right: 1px solid var(--border); }
+        .center-pane { flex: 1; background: var(--bg-main); display: flex; flex-direction: column; }
+        .right-pane { flex: 0 0 420px; border-left: 1px solid var(--border); display: flex; flex-direction: column;}
+
+        h2 { margin-top: 0; font-size: 1rem; color: #334155; margin-bottom: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* Left Pane: Data Library */
+        .category-group { margin-bottom: 25px; }
+        .category-title { font-size: 0.8rem; text-transform: uppercase; color: var(--text-light); font-weight: 800; margin-bottom: 10px; border-bottom: 2px solid var(--border); padding-bottom: 4px; letter-spacing: 0.5px;}
+        .element-btn { display: flex; flex-direction: column; width: 100%; padding: 10px; margin-bottom: 6px; background: #fff; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; text-align: left; transition: all 0.15s; }
+        .element-btn:hover { border-color: var(--secondary); background: #f8fafc; }
+        .element-btn.selected { background: #eff6ff; border-color: var(--secondary); box-shadow: inset 0 0 0 1px var(--secondary); }
+        .btn-header { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; font-weight: 600; margin-bottom: 4px; }
+        .btn-name { font-size: 0.85rem; color: #0f172a; font-weight: 700; font-family: monospace; }
+        .badge { font-size: 0.55rem; padding: 2px 5px; border-radius: 3px; font-weight: bold; color: white; background: #64748b; text-transform: uppercase; }
+        .badge-spi { background: var(--spi-color); } 
+        .badge-tier1 { background: var(--pi-color); } 
+
+        /* Center Pane: Collection Box */
+        .schema-container { background: #fff; border-radius: 6px; border: 1px solid var(--border); flex: 1; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+        .schema-header { background: #f8fafc; padding: 12px 20px; border-bottom: 1px solid var(--border); font-weight: 600; display: flex; justify-content: space-between; font-size: 0.95rem; }
+        .schema-rows { padding: 15px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+        .schema-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #ffffff; border: 1px solid var(--border); border-radius: 4px; font-family: monospace; font-size: 0.85rem; animation: slideIn 0.2s ease-out; }
+        .schema-harm { font-size: 0.7rem; color: #94a3b8; font-family: -apple-system, sans-serif; text-transform: uppercase;}
+
+        /* Right Pane: Verdict */
+        .status-banner { padding: 15px; border-radius: 6px; text-align: center; color: white; font-size: 1.2rem; font-weight: 800; margin-bottom: 15px; letter-spacing: 1px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .status-pi { background: var(--pi-color); }
+        .status-nonpi { background: var(--nonpi-color); }
+
+        .audit-log { background: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.85rem; line-height: 1.5; flex: 1; overflow-y: auto; }
+        .log-entry { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; }
+        .log-entry:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .alert-text { color: var(--pi-color); font-weight: 700; }
+        .spi-text { color: var(--spi-color); font-weight: 700; }
+        
+        .remediation-box { margin-bottom: 15px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; padding: 15px; display: none; }
+        .remediation-box h3 { margin: 0 0 10px 0; font-size: 0.85rem; color: #166534; text-transform: uppercase; font-weight: 800;}
+        .rem-item { font-size: 0.8rem; color: #15803d; margin-bottom: 8px; padding-left: 10px; border-left: 2px solid #22c55e; }
+
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px); }
+        .modal-content { background-color: #fff; margin: 5% auto; padding: 30px; border-radius: 8px; width: 90%; max-width: 650px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-height: 85vh; overflow-y: auto; line-height: 1.6; }
+        .modal-content h3 { color: #0f172a; margin-top: 0; border-bottom: 2px solid var(--border); padding-bottom: 10px; }
+        .close-btn { float: right; font-size: 24px; cursor: pointer; color: #64748b; font-weight: bold; line-height: 1; }
+        .close-btn:hover { color: #0f172a; }
+        
+        .citation-box { background: #f8fafc; border-left: 4px solid #4f46e5; padding: 15px; margin-top: 20px; font-size: 0.85rem; color: #334155; }
+        .visual-diagram { background: #e0e7ff; padding: 15px; border-radius: 6px; margin: 15px 0; font-family: monospace; font-size: 0.85rem; text-align: center; border: 1px dashed #818cf8; }
+
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div style="font-size: 1.1rem; font-weight: bold; letter-spacing: 1px;">SCHEMA CLASSIFIER <span style="color:#93c5fd">v5.0</span></div>
+        <div class="header-controls">
+            <div class="control-group">
+                <label>Regulation:</label>
+                <select id="jurisdiction" onchange="evaluateSchema()">
+                    <option value="global">Global (Strictest)</option>
+                    <option value="gdpr">GDPR (Europe)</option>
+                    <option value="ccpa">CCPA (California)</option>
+                    <option value="hipaa">HIPAA (US Health)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Dataset Size:</label>
+                <select id="dataset-size" onchange="evaluateSchema()">
+                    <option value="large">Large (> 1,000 rows)</option>
+                    <option value="small">Small (< 1,000 rows)</option>
+                </select>
+            </div>
+            <button class="btn btn-science" onclick="openScienceModal()">🧠 Science of Re-ID</button>
+            <button class="btn btn-outline" onclick="openImportModal()">📥 Import</button>
+            <button class="btn btn-action" onclick="exportReceipt()">📄 Report</button>
+            <button class="btn btn-outline" onclick="resetDashboard()">↺ Clear</button>
+        </div>
+    </header>
+
+    <div class="dashboard">
+        <div class="pane left-pane" id="library-pane">
+            <h2>Data Dictionary</h2>
+        </div>
+
+        <div class="pane center-pane">
+            <h2>Target Table Schema</h2>
+            <div class="schema-container">
+                <div class="schema-header">
+                    <span>table: <strong id="table-name-disp">production_users</strong></span>
+                    <span id="col-count" style="color: #64748b;">0 Columns</span>
+                </div>
+                <div class="schema-rows" id="schema-rows">
+                    <div style="color: #94a3b8; text-align: center; margin-top: 40px;">Select columns or import schema to build table.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="pane right-pane">
+            <h2>Data Protection Impact (DPIA)</h2>
+            <div class="status-banner status-nonpi" id="status-banner">CLASSIFICATION: NON-PI</div>
+
+            <div class="remediation-box" id="remediation-box">
+                <h3>💡 Governance Recommendations</h3>
+                <div id="remediation-content"></div>
+            </div>
+
+            <h3 style="margin: 0 0 10px 0; font-size: 0.85rem; color: #64748b;">AUDIT LOG</h3>
+            <div class="audit-log" id="audit-log">
+                <div class="log-entry">Awaiting schema input...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="importModal" class="modal">
+        <div class="modal-content" style="width: 400px; margin: 10% auto;">
+            <span class="close-btn" onclick="closeImportModal()">&times;</span>
+            <h3 style="margin-top:0;">Import Schema</h3>
+            <p style="font-size: 0.85rem; color: #64748b;">Paste comma-separated column names.</p>
+            <textarea id="importText" style="width:100%; height:100px; padding:10px; box-sizing:border-box;" placeholder="e.g., employee_number, first_name, zip_code"></textarea>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:15px;">
+                <button class="btn btn-action" onclick="processImport()">Auto-Map</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="scienceModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeScienceModal()">&times;</span>
+            <h3>The Science of Re-identification</h3>
+            
+            <p>Why does combining seemingly safe data (like a ZIP code and Gender) trigger a strict PI violation? The answer lies in <strong>Linkage Attacks</strong> and the mathematical concept of <em>k-anonymity</em>.</p>
+            
+            <h4>The Linkage Attack Mechanism</h4>
+            <p>Data is rarely breached in a vacuum. Hackers re-identify "anonymous" tables by overlaying them with public datasets.</p>
+            
+            <div class="visual-diagram">
+                <strong>Anonymous Health Data</strong><br>
+                [Diagnosis: Asthma] + [ZIP: 02138] + [DOB: 01/15/1980]<br><br>
+                ➕ (cross-referenced with)<br><br>
+                <strong>Public Voter Registry</strong><br>
+                [Name: John Doe] + [ZIP: 02138] + [DOB: 01/15/1980]<br><br>
+                🟰 (equals)<br><br>
+                <strong style="color: #dc2626;">John Doe has Asthma</strong>
+            </div>
+
+            <h4>The 87% Rule (The Mosaic Effect)</h4>
+            <p>You might think thousands of people share your ZIP code and birthday. Mathematically, they do not. Privacy scientists proved that the combination of just three demographic traits acts as a unique fingerprint for the vast majority of the population.</p>
+
+            <div class="citation-box">
+                <strong>Academic Citation:</strong><br>
+                <em>"It was found that 87% (216 million of 248 million) of the population in the United States had reported characteristics that likely made them unique based only on [5-digit ZIP, gender, date of birth]."</em><br><br>
+                — Sweeney, L. (2000). Simple Demographics Often Identify People Uniquely. Carnegie Mellon University, Data Privacy Working Paper 3.
+            </div>
+        </div>
+    </div>
+
+<script>
+    // --- 1. The Exhaustive Data Inventory ---
+    const dataInventory = [
+        // System & Internal
+        { id: "uuid", name: "user_uuid / account_id", tier: 1, isSPI: false, category: "System & Internal", regs: ["Pseudonymized PI"], harm: "Tracking", remediation: "Ensure strict RBAC. Pseudonymized data remains PI." },
+        
+        // Names & Contact
+        { id: "first_name", name: "first_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification" },
+        { id: "last_name", name: "last_name", tier: 2, isSPI: false, category: "Personal Details", regs: ["Quasi"], harm: "Identification" },
+        { id: "email", name: "email_address", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Phishing" },
+        { id: "phone", name: "phone_number", tier: 1, isSPI: false, category: "Personal Details", regs: ["Direct ID"], harm: "Smishing" },
+        
+        // Government IDs
+        { id: "ssn", name: "social_security_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Identity Theft" },
+        { id: "passport", name: "passport_number", tier: 1, isSPI: true, category: "Government IDs", regs: ["SPI"], harm: "Fraud" },
+
+        // Financial
+        { id: "credit_card", name: "credit_card_number", tier: 1, isSPI: true, category: "Financial", regs: ["PCI-DSS / SPI"], harm: "Financial Fraud", remediation: "Tokenize or hash if full PAN is not required." },
+
+        // Location
+        { id: "address", name: "street_address", tier: 1, isSPI: false, category: "Location", regs: ["Direct ID"], harm: "Stalking", remediation: "Truncate to ZIP or City to anonymize." },
+        { id: "gps", name: "precise_geolocation", tier: 1, isSPI: true, category: "Location", regs: ["SPI"], harm: "Physical Tracking", remediation: "Downgrade coordinates to generic region bounds." },
+        { id: "zip_code", name: "zip_code_5", tier: 2, isSPI: false, category: "Location", regs: ["Quasi"], harm: "Targeting" },
+        { id: "state", name: "state_province", tier: 3, isSPI: false, category: "Location", regs: ["Generalized"], harm: "None" },
+
+        // Demographics
+        { id: "dob", name: "date_of_birth", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Auth Bypass", remediation: "Downgrade to 'Year of Birth' to break Mosaic Effect." },
+        { id: "dob_year", name: "birth_year", tier: 3, isSPI: false, category: "Demographics", regs: ["Generalized"], harm: "None" },
+        { id: "gender", name: "gender", tier: 2, isSPI: false, category: "Demographics", regs: ["Quasi"], harm: "Profiling" },
+        { id: "race", name: "race_ethnicity", tier: 2, isSPI: true, category: "Demographics", regs: ["SPI"], harm: "Discrimination" },
+
+        // Health & Biometric
+        { id: "mrn", name: "medical_record_no", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["SPI / HIPAA"], harm: "Medical ID Theft" },
+        { id: "diagnosis", name: "specific_diagnosis", tier: 2, isSPI: true, category: "Health & Biometric", regs: ["SPI"], harm: "Stigma" },
+        { id: "biometric", name: "biometric_hash", tier: 1, isSPI: true, category: "Health & Biometric", regs: ["SPI"], harm: "Irrevocable Compromise", remediation: "Highest encryption required." },
+
+        // Digital & Security
+        { id: "ip_address", name: "ip_address", tier: 1, isSPI: false, category: "Digital & Security", regs: ["Direct ID"], harm: "Cyber Profiling" },
+        { id: "password", name: "password_hash", tier: 1, isSPI: true, category: "Digital & Security", regs: ["Security"], harm: "Account Takeover", remediation: "Ensure strong salting/hashing algorithms." }
+    ];
+
+    let selectedIds = new Set();
+    let currentLogData = ""; 
+
+    function init() {
+        const library = document.getElementById('library-pane');
+        const categories = [...new Set(dataInventory.map(item => item.category))];
+
+        categories.forEach(cat => {
+            const group = document.createElement('div');
+            group.className = 'category-group';
+            group.innerHTML = `<div class="category-title">${cat}</div>`;
+            
+            dataInventory.filter(item => item.category === cat).forEach(item => {
+                const btn = document.createElement('button');
+                btn.className = 'element-btn';
+                btn.id = `btn-${item.id}`;
+                btn.onclick = () => toggleElement(item.id);
+                
+                let badgeClass = item.isSPI ? "badge-spi" : item.tier === 1 ? "badge-tier1" : "badge";
+                
+                btn.innerHTML = `
+                    <div class="btn-header">
+                        <span class="btn-name">${item.name}</span>
+                        <span class="badge ${badgeClass}">${item.regs[0]}</span>
+                    </div>
+                `;
+                group.appendChild(btn);
+            });
+            library.appendChild(group);
+        });
+    }
+
+    function toggleElement(id) {
+        if (selectedIds.has(id)) selectedIds.delete(id);
+        else selectedIds.add(id);
+        evaluateSchema();
+    }
+
+    function evaluateSchema() {
+        const jur = document.getElementById('jurisdiction').value;
+        const size = document.getElementById('dataset-size').value;
+        const mosaicThreshold = (size === 'small') ? 2 : 3;
+
+        let directNodes = [];
+        let quasiNodes = [];
+        let spiNodes = [];
+        let remediations = [];
+        
+        let hasFirst = selectedIds.has("first_name");
+        let hasLast = selectedIds.has("last_name");
+        let fullNameTriggered = false;
+
+        selectedIds.forEach(id => {
+            const item = dataInventory.find(i => i.id === id);
+            
+            if (item.isSPI) spiNodes.push(item);
+            if (item.remediation) remediations.push({ name: item.name, text: item.remediation });
+            
+            if (id === "first_name" || id === "last_name") {
+                if (hasFirst && hasLast) {
+                    if (!fullNameTriggered) {
+                        directNodes.push({ name: "Compound Full Name (first_name + last_name)" });
+                        fullNameTriggered = true;
+                    }
+                } else {
+                    quasiNodes.push(item);
+                }
+            } else {
+                if (item.tier === 1) directNodes.push(item);
+                if (item.tier === 2) quasiNodes.push(item);
+            }
+        });
+
+        updateLibraryUI();
+        updateCollectionUI();
+        updateVerdict(directNodes, quasiNodes, spiNodes, remediations, mosaicThreshold, jur);
+    }
+
+    function updateLibraryUI() {
+        dataInventory.forEach(item => {
+            const btn = document.getElementById(`btn-${item.id}`);
+            if (selectedIds.has(item.id)) btn.classList.add('selected');
+            else btn.classList.remove('selected');
+        });
+    }
+
+    function updateCollectionUI() {
+        const schema = document.getElementById('schema-rows');
+        document.getElementById('col-count').innerText = `${selectedIds.size} Columns`;
+        schema.innerHTML = '';
+        
+        if (selectedIds.size === 0) {
+            schema.innerHTML = `<div style="color: #94a3b8; text-align: center; margin-top: 40px;">Select columns or import schema to build table.</div>`;
+            return;
+        }
+
+        selectedIds.forEach(id => {
+            const item = dataInventory.find(i => i.id === id);
+            const row = document.createElement('div');
+            row.className = 'schema-row';
+            row.style.borderLeft = item.tier === 1 ? '4px solid var(--pi-color)' : item.isSPI ? '4px solid var(--spi-color)' : '1px solid var(--border)';
+            row.innerHTML = `<span>${item.name}</span> <span class="schema-harm">${item.harm}</span>`;
+            schema.appendChild(row);
+        });
+    }
+
+    function updateVerdict(direct, quasi, spi, rems, mosaicThreshold, jur) {
+        const banner = document.getElementById('status-banner');
+        const log = document.getElementById('audit-log');
+        const remBox = document.getElementById('remediation-box');
+        const remContent = document.getElementById('remediation-content');
+        
+        let logsHTML = "";
+        let isPI = false;
+        
+        if (direct.length > 0 || quasi.length >= mosaicThreshold) isPI = true;
+
+        if (isPI) {
+            banner.className = 'status-banner status-pi';
+            banner.innerText = 'CLASSIFICATION: PI / RESTRICTED';
+
+            logsHTML += `<div class="log-entry"><span class="alert-text">Schema Classified as Personal Information.</span> Data subject to compliance frameworks under <strong>${jur.toUpperCase()}</strong> rules.</div>`;
+            
+            if (direct.length > 0) {
+                logsHTML += `<div class="log-entry"><strong>Direct Identifiers:</strong><br> ${direct.map(d => `- ${d.name}`).join('<br>')}</div>`;
+            }
+            if (quasi.length >= mosaicThreshold) {
+                logsHTML += `<div class="log-entry" style="background: #fff1f2; border-left: 3px solid #e11d48; padding-left: 10px;">
+                    <strong>Mosaic Effect Triggered:</strong> Threshold (${mosaicThreshold}) exceeded. Schema contains ${quasi.length} quasi-identifiers (${quasi.map(q=>q.name).join(', ')}). 
+                    <br><br><button class="btn btn-outline" style="color:#e11d48; border-color:#fda4af; padding: 4px 8px; font-size: 0.75rem;" onclick="openScienceModal()">How do these identify someone?</button>
+                </div>`;
+            }
+            if (spi.length > 0) {
+                logsHTML += `<div class="log-entry"><span class="spi-text">Sensitive Data (SPI):</span> ${spi.map(s=>s.name).join(', ')}.</div>`;
+            }
+
+            if (rems.length > 0) {
+                remBox.style.display = 'block';
+                remContent.innerHTML = rems.map(r => `<div class="rem-item"><strong>${r.name}:</strong> ${r.text}</div>`).join('');
+            } else { remBox.style.display = 'none'; }
+
+        } else {
+            banner.className = 'status-banner status-nonpi';
+            banner.innerText = 'CLASSIFICATION: NON-PI';
+            remBox.style.display = 'none';
+            
+            if (selectedIds.size === 0) logsHTML += `<div class="log-entry">Schema is empty.</div>`;
+            else {
+                logsHTML += `<div class="log-entry">Schema does not meet the threshold for PI under <strong>${jur.toUpperCase()}</strong> rules.</div>`;
+                if (quasi.length > 0) logsHTML += `<div class="log-entry"><em>Note: Contains ${quasi.length} quasi-identifiers (${quasi.map(q=>q.name).join(', ')}). Threshold is ${mosaicThreshold}.</em></div>`;
+            }
+        }
+
+        log.innerHTML = logsHTML;
+        
+        currentLogData = `DATA PROTECTION IMPACT ASSESSMENT\nJurisdiction: ${jur.toUpperCase()}\nVerdict: ${isPI ? 'PI DETECTED' : 'NON-PI'}\n\nSCHEMA:\n`;
+        selectedIds.forEach(id => currentLogData += `- ${dataInventory.find(i=>i.id===id).name}\n`);
+    }
+
+    function openImportModal() { document.getElementById("importModal").style.display = "block"; }
+    function closeImportModal() { document.getElementById("importModal").style.display = "none"; document.getElementById('importText').value = ''; }
+    
+    function openScienceModal() { document.getElementById("scienceModal").style.display = "block"; }
+    function closeScienceModal() { document.getElementById("scienceModal").style.display = "none"; }
+    
+    function processImport() {
+        const text = document.getElementById('importText').value.toLowerCase();
+        selectedIds.clear();
+        const inputTokens = text.split(',').map(s => s.trim().replace(/[^a-z0-9_]/g, ''));
+        
+        dataInventory.forEach(item => {
+            if (inputTokens.includes(item.id) || inputTokens.includes(item.name.toLowerCase())) {
+                selectedIds.add(item.id);
+            }
+        });
+        closeImportModal();
+        evaluateSchema();
+    }
+
+    function exportReceipt() {
+        if (selectedIds.size === 0) return;
+        const blob = new Blob([currentLogData], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `DPIA_Receipt_${new Date().getTime()}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    function resetDashboard() { selectedIds.clear(); evaluateSchema(); }
+
+    init();
+</script>
+
+</body>
+</html>
